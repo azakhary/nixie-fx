@@ -448,9 +448,12 @@ export function bakeVectorNoise(
 //
 // The 2-D `perlinCurl` above serves UV-domain material baking. Particle motion
 // needs the 3-D analogue: a divergence-free flow field, curl = ∇ × Ψ of a
-// three-channel gradient-noise vector potential, taken by central finite
-// differences. Shares the deterministic hashed-lattice infrastructure so the
-// engine and editor previews sample the identical field.
+// three-channel gradient-noise vector potential. The partials come from the
+// ANALYTIC gradient of the lattice interpolation (one traversal per channel),
+// replacing the original 12-evaluation central finite difference — exactly the
+// derivative the FD approximated, so the field is unchanged. Shares the
+// deterministic hashed-lattice infrastructure so the engine and editor
+// previews sample the identical field.
 // ---------------------------------------------------------------------------
 
 /** Hash a 3-D lattice cell (ix, iy, iz) + seed to a float in [0, 1). */
@@ -515,10 +518,143 @@ export function gradientNoise3D(
   return lerp(nxy0, nxy1, w) * 1.155;
 }
 
-const CURL_EPSILON = 0.01;
 // Rough RMS match against a unit sine wave so a given noise Strength feels
 // comparable across the module's sine and curl modes.
 const CURL_AMPLITUDE_SCALE = 0.4;
+
+/** Quintic fade derivative: d/dt of t³(t(6t−15)+10) = 30t²(t−1)². */
+function fadeDerivative(t: number): number {
+  const s = t * (t - 1);
+  return 30 * s * s;
+}
+
+const cornerGradientScratch: [number, number, number] = [0, 0, 0];
+
+/** The unit gradient vector hashed onto lattice corner (ix, iy, iz). */
+function cornerGradient(
+  ix: number,
+  iy: number,
+  iz: number,
+  seed: number,
+  out: [number, number, number],
+): void {
+  // Uniform gradient direction from two hashes (azimuth + cos-polar) —
+  // identical to the corner gradients inside `gradientNoise3D`.
+  const azimuth = hash3(ix, iy, iz, seed) * Math.PI * 2;
+  const cosPolar = hash3(ix, iy, iz, (seed ^ 0x9e3779b9) | 0) * 2 - 1;
+  const sinPolar = Math.sqrt(Math.max(0, 1 - cosPolar * cosPolar));
+  out[0] = Math.cos(azimuth) * sinPolar;
+  out[1] = Math.sin(azimuth) * sinPolar;
+  out[2] = cosPolar;
+}
+
+/**
+ * Analytic gradient (∂N/∂x, ∂N/∂y, ∂N/∂z) of `gradientNoise3D`, written into
+ * `out`. Differentiates the trilinear interpolation directly: each partial is
+ * the interpolated corner-gradient component plus the fade-derivative term of
+ * the corner-dot differences along that axis. One lattice traversal replaces
+ * the six finite-difference evaluations a central difference needs per
+ * channel, and the result is the exact derivative the FD approximated.
+ */
+export function gradientNoise3DGradientInto(
+  x: number,
+  y: number,
+  z: number,
+  seed: number,
+  out: [number, number, number],
+): void {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const z0 = Math.floor(z);
+  const fx = x - x0;
+  const fy = y - y0;
+  const fz = z - z0;
+  const u = fade(fx);
+  const v = fade(fy);
+  const w = fade(fz);
+
+  const g = cornerGradientScratch;
+  cornerGradient(x0, y0, z0, seed, g);
+  const g000x = g[0];
+  const g000y = g[1];
+  const g000z = g[2];
+  const n000 = g000x * fx + g000y * fy + g000z * fz;
+  cornerGradient(x0 + 1, y0, z0, seed, g);
+  const g100x = g[0];
+  const g100y = g[1];
+  const g100z = g[2];
+  const n100 = g100x * (fx - 1) + g100y * fy + g100z * fz;
+  cornerGradient(x0, y0 + 1, z0, seed, g);
+  const g010x = g[0];
+  const g010y = g[1];
+  const g010z = g[2];
+  const n010 = g010x * fx + g010y * (fy - 1) + g010z * fz;
+  cornerGradient(x0 + 1, y0 + 1, z0, seed, g);
+  const g110x = g[0];
+  const g110y = g[1];
+  const g110z = g[2];
+  const n110 = g110x * (fx - 1) + g110y * (fy - 1) + g110z * fz;
+  cornerGradient(x0, y0, z0 + 1, seed, g);
+  const g001x = g[0];
+  const g001y = g[1];
+  const g001z = g[2];
+  const n001 = g001x * fx + g001y * fy + g001z * (fz - 1);
+  cornerGradient(x0 + 1, y0, z0 + 1, seed, g);
+  const g101x = g[0];
+  const g101y = g[1];
+  const g101z = g[2];
+  const n101 = g101x * (fx - 1) + g101y * fy + g101z * (fz - 1);
+  cornerGradient(x0, y0 + 1, z0 + 1, seed, g);
+  const g011x = g[0];
+  const g011y = g[1];
+  const g011z = g[2];
+  const n011 = g011x * fx + g011y * (fy - 1) + g011z * (fz - 1);
+  cornerGradient(x0 + 1, y0 + 1, z0 + 1, seed, g);
+  const g111x = g[0];
+  const g111y = g[1];
+  const g111z = g[2];
+  const n111 = g111x * (fx - 1) + g111y * (fy - 1) + g111z * (fz - 1);
+
+  // Trilinearly interpolated corner-gradient components (∂n_c/∂axis terms).
+  const lgx = lerp(
+    lerp(lerp(g000x, g100x, u), lerp(g010x, g110x, u), v),
+    lerp(lerp(g001x, g101x, u), lerp(g011x, g111x, u), v),
+    w,
+  );
+  const lgy = lerp(
+    lerp(lerp(g000y, g100y, u), lerp(g010y, g110y, u), v),
+    lerp(lerp(g001y, g101y, u), lerp(g011y, g111y, u), v),
+    w,
+  );
+  const lgz = lerp(
+    lerp(lerp(g000z, g100z, u), lerp(g010z, g110z, u), v),
+    lerp(lerp(g001z, g101z, u), lerp(g011z, g111z, u), v),
+    w,
+  );
+
+  // Corner-dot differences along each axis (∂/∂fade-weight terms).
+  const dx = lerp(
+    lerp(n100 - n000, n110 - n010, v),
+    lerp(n101 - n001, n111 - n011, v),
+    w,
+  );
+  const dy = lerp(
+    lerp(n010 - n000, n110 - n100, u),
+    lerp(n011 - n001, n111 - n101, u),
+    w,
+  );
+  const dz = lerp(
+    lerp(n001 - n000, n101 - n100, u),
+    lerp(n011 - n010, n111 - n110, u),
+    v,
+  );
+
+  out[0] = (lgx + fadeDerivative(fx) * dx) * 1.155;
+  out[1] = (lgy + fadeDerivative(fy) * dy) * 1.155;
+  out[2] = (lgz + fadeDerivative(fz) * dz) * 1.155;
+}
+
+const curlGradientScratch: [number, number, number] = [0, 0, 0];
 
 /**
  * Sample the divergence-free 3-D curl field at a point into `out`. The three
@@ -537,35 +673,16 @@ export function sampleCurlNoise3(
   const seedX = seed | 0;
   const seedY = (seed ^ 0x51ed270b) | 0;
   const seedZ = (seed ^ 0x2545f491) | 0;
-  const e = CURL_EPSILON;
-  const inv2e = 1 / (2 * e);
-  // ∂Ψz/∂y − ∂Ψy/∂z
-  const dPzdy =
-    (gradientNoise3D(x, y + e, z, seedZ) -
-      gradientNoise3D(x, y - e, z, seedZ)) *
-    inv2e;
-  const dPydz =
-    (gradientNoise3D(x, y, z + e, seedY) -
-      gradientNoise3D(x, y, z - e, seedY)) *
-    inv2e;
-  // ∂Ψx/∂z − ∂Ψz/∂x
-  const dPxdz =
-    (gradientNoise3D(x, y, z + e, seedX) -
-      gradientNoise3D(x, y, z - e, seedX)) *
-    inv2e;
-  const dPzdx =
-    (gradientNoise3D(x + e, y, z, seedZ) -
-      gradientNoise3D(x - e, y, z, seedZ)) *
-    inv2e;
-  // ∂Ψy/∂x − ∂Ψx/∂y
-  const dPydx =
-    (gradientNoise3D(x + e, y, z, seedY) -
-      gradientNoise3D(x - e, y, z, seedY)) *
-    inv2e;
-  const dPxdy =
-    (gradientNoise3D(x, y + e, z, seedX) -
-      gradientNoise3D(x, y - e, z, seedX)) *
-    inv2e;
+  const g = curlGradientScratch;
+  gradientNoise3DGradientInto(x, y, z, seedX, g);
+  const dPxdy = g[1];
+  const dPxdz = g[2];
+  gradientNoise3DGradientInto(x, y, z, seedY, g);
+  const dPydx = g[0];
+  const dPydz = g[2];
+  gradientNoise3DGradientInto(x, y, z, seedZ, g);
+  const dPzdx = g[0];
+  const dPzdy = g[1];
   out[0] = (dPzdy - dPydz) * CURL_AMPLITUDE_SCALE;
   out[1] = (dPxdz - dPzdx) * CURL_AMPLITUDE_SCALE;
   out[2] = (dPydx - dPxdy) * CURL_AMPLITUDE_SCALE;

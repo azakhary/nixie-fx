@@ -76,6 +76,54 @@ describe("gradientNoise3D", () => {
   });
 });
 
+/**
+ * The original curl implementation: central finite differences (e = 0.01) of
+ * `gradientNoise3D`, 12 evaluations per sample. Kept here as the reference
+ * that pins the analytic-gradient implementation to the exact same field.
+ */
+function legacyFiniteDifferenceCurl(
+  x: number,
+  y: number,
+  z: number,
+  seed: number,
+): [number, number, number] {
+  const seedX = seed | 0;
+  const seedY = (seed ^ 0x51ed270b) | 0;
+  const seedZ = (seed ^ 0x2545f491) | 0;
+  const e = 0.01;
+  const inv2e = 1 / (2 * e);
+  const scale = 0.4; // CURL_AMPLITUDE_SCALE
+  const dPzdy =
+    (gradientNoise3D(x, y + e, z, seedZ) -
+      gradientNoise3D(x, y - e, z, seedZ)) *
+    inv2e;
+  const dPydz =
+    (gradientNoise3D(x, y, z + e, seedY) -
+      gradientNoise3D(x, y, z - e, seedY)) *
+    inv2e;
+  const dPxdz =
+    (gradientNoise3D(x, y, z + e, seedX) -
+      gradientNoise3D(x, y, z - e, seedX)) *
+    inv2e;
+  const dPzdx =
+    (gradientNoise3D(x + e, y, z, seedZ) -
+      gradientNoise3D(x - e, y, z, seedZ)) *
+    inv2e;
+  const dPydx =
+    (gradientNoise3D(x + e, y, z, seedY) -
+      gradientNoise3D(x - e, y, z, seedY)) *
+    inv2e;
+  const dPxdy =
+    (gradientNoise3D(x, y + e, z, seedX) -
+      gradientNoise3D(x, y - e, z, seedX)) *
+    inv2e;
+  return [
+    (dPzdy - dPydz) * scale,
+    (dPxdz - dPzdx) * scale,
+    (dPydx - dPxdy) * scale,
+  ];
+}
+
 describe("sampleCurlNoise3", () => {
   it("is deterministic for a fixed point and seed", () => {
     const a: [number, number, number] = [0, 0, 0];
@@ -84,6 +132,36 @@ describe("sampleCurlNoise3", () => {
     sampleCurlNoise3(1.3, -0.4, 2.2, 5, b);
     expect(a).toEqual(b);
     expect(Math.hypot(a[0], a[1], a[2])).toBeGreaterThan(0);
+  });
+
+  it("matches the legacy central-difference field to within FD tolerance", () => {
+    // The analytic gradient computes exactly the derivative the old central
+    // difference approximated, so the two must agree to within the FD
+    // scheme's own O(e²) truncation error. This pins the visual field across
+    // the implementation swap — a math slip in the analytic gradient would
+    // blow far past these bounds.
+    const out: [number, number, number] = [0, 0, 0];
+    let maxError = 0;
+    let errorSum = 0;
+    let magnitudeSum = 0;
+    const samples = 300;
+    for (let i = 0; i < samples; i++) {
+      const x = Math.sin(i * 12.9898) * 6.7;
+      const y = Math.sin(i * 78.233) * 4.9;
+      const z = Math.sin(i * 3.7) * 8.3;
+      const seed = (i % 5) * 101;
+      sampleCurlNoise3(x, y, z, seed, out);
+      const legacy = legacyFiniteDifferenceCurl(x, y, z, seed);
+      for (let axis = 0; axis < 3; axis++) {
+        const error = Math.abs(out[axis]! - legacy[axis]!);
+        maxError = Math.max(maxError, error);
+        errorSum += error;
+      }
+      magnitudeSum += Math.hypot(out[0], out[1], out[2]);
+    }
+    expect(magnitudeSum / samples).toBeGreaterThan(0.05); // field is alive
+    expect(maxError).toBeLessThan(2e-3);
+    expect(errorSum / (samples * 3)).toBeLessThan(3e-4);
   });
 
   it("is approximately divergence-free (unlike per-axis sine)", () => {
