@@ -1,0 +1,241 @@
+{
+  "app": "vfx-editor",
+  "kind": "particle-effect",
+  "version": 1,
+  "id": "stress-many-small-particles",
+  "name": "Stress - Many Small Particles",
+  "emitters": [
+    {
+      "id": "small-spark-field-a",
+      "name": "Small Spark Field A",
+      "enabled": true,
+      "mode": "billboard",
+      "maxParticles": 4096,
+      "duration": 4,
+      "loop": true,
+      "modules": {
+        "velocity": true,
+        "color": true,
+        "size": true,
+        "rotation": false
+      },
+      "spawn": {
+        "rate": 2800,
+        "rateValue": {
+          "mode": "constant",
+          "value": 2800
+        },
+        "shape": "box",
+        "box": [
+          9,
+          0.2,
+          5
+        ],
+        "randomPositionAmount": 0.04
+      },
+      "forces": {
+        "gravityValue": {
+          "mode": "constant",
+          "value": 0.15
+        },
+        "dragValue": {
+          "mode": "constant",
+          "value": 0.03
+        }
+      },
+      "billboard": {
+        "shape": "circle",
+        "sizeValue": {
+          "mode": "curve",
+          "curve": [
+            {
+              "x": 0,
+              "y": 0.035
+            },
+            {
+              "x": 1,
+              "y": 0.01
+            }
+          ]
+        },
+        "softness": 0.6
+      },
+      "color": {
+        "gradient": {
+          "mode": "blend",
+          "colorStops": [
+            {
+              "position": 0,
+              "color": [
+                1,
+                0.95,
+                0.65
+              ]
+            },
+            {
+              "position": 1,
+              "color": [
+                0.4,
+                0.8,
+                1
+              ]
+            }
+          ],
+          "alphaStops": [
+            {
+              "position": 0,
+              "alpha": 0.85
+            },
+            {
+              "position": 1,
+              "alpha": 0
+            }
+          ]
+        }
+      },
+      "initializeParticle": {
+        "lifetime": {
+          "mode": "random",
+          "min": 0.7,
+          "max": 1.6
+        },
+        "color": {
+          "mode": "constant",
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "colorB": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "intensity": {
+            "mode": "constant",
+            "value": 1
+          }
+        },
+        "size": {
+          "mode": "constant",
+          "value": 1
+        },
+        "velocity": {
+          "mode": "vector",
+          "min": [
+            -0.4,
+            0.5,
+            -0.4
+          ],
+          "max": [
+            0.4,
+            1.2,
+            0.4
+          ],
+          "speed": {
+            "mode": "random",
+            "min": 0.1,
+            "max": 0.8
+          }
+        }
+      }
+    },
+    {
+      "id": "small-spark-field-b",
+      "name": "Small Spark Field B",
+      "enabled": true,
+      "mode": "billboard",
+      "maxParticles": 2048,
+      "duration": 4,
+      "loop": true,
+      "modules": {
+        "velocity": true,
+        "color": true,
+        "size": true,
+        "rotation": false
+      },
+      "spawn": {
+        "rate": 1200,
+        "rateValue": {
+          "mode": "curve",
+          "curve": [
+            {
+              "x": 0,
+              "y": 900
+            },
+            {
+              "x": 0.5,
+              "y": 1400
+            },
+            {
+              "x": 1,
+              "y": 900
+            }
+          ]
+        },
+        "shape": "circle",
+        "radius": 4.5,
+        "radiusThickness": 1,
+        "sphericalDirectionAmount": 0.4
+      },
+      "billboard": {
+        "shape": "square",
+        "sizeValue": {
+          "mode": "constant",
+          "value": 0.025
+        },
+        "softness": 0.2
+      },
+      "initializeParticle": {
+        "lifetime": {
+          "mode": "random",
+          "min": 0.45,
+          "max": 1.1
+        },
+        "color": {
+          "mode": "constant",
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "colorB": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "intensity": {
+            "mode": "constant",
+            "value": 1
+          }
+        },
+        "size": {
+          "mode": "constant",
+          "value": 1
+        },
+        "velocity": {
+          "mode": "vector",
+          "min": [
+            -0.3,
+            0.2,
+            -0.3
+          ],
+          "max": [
+            0.3,
+            0.9,
+            0.3
+          ],
+          "speed": {
+            "mode": "random",
+            "min": 0.2,
+            "max": 1.1
+          }
+        }
+      }
+    }
+  ]
+}

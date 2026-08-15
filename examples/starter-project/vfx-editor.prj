@@ -1,0 +1,17 @@
+{
+  "app": "vfx-editor",
+  "kind": "project",
+  "version": 1,
+  "id": "vfx-nixie-fx-starter",
+  "name": "NixieFX Starter",
+  "settings": {
+    "effectDataPath": "effects",
+    "outputPath": "out/vfx",
+    "assetRootPath": "assets",
+    "materialsFolder": "materials",
+    "allowExternalOutput": false,
+    "lastEffectFile": "starter-effect.json"
+  },
+  "createdAt": "2026-08-15T00:00:00.000Z",
+  "updatedAt": "2026-08-15T00:00:00.000Z"
+}

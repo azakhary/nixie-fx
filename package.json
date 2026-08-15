@@ -1,0 +1,113 @@
+{
+  "name": "nixie-fx",
+  "version": "0.1.0",
+  "description": "Portable particle and VFX runtimes for PixiJS and Three.js",
+  "keywords": [
+    "particles",
+    "vfx",
+    "pixi.js",
+    "three.js",
+    "game-development"
+  ],
+  "homepage": "https://github.com/azakhary/nixie-fx#readme",
+  "bugs": {
+    "url": "https://github.com/azakhary/nixie-fx/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/azakhary/nixie-fx.git"
+  },
+  "license": "MIT",
+  "author": "azakhary",
+  "type": "module",
+  "sideEffects": false,
+  "bin": {
+    "nixie-fx": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./project": {
+      "types": "./dist/project.d.ts",
+      "import": "./dist/project.js"
+    },
+    "./materials": {
+      "types": "./dist/materials.d.ts",
+      "import": "./dist/materials.js"
+    },
+    "./pixi": {
+      "types": "./dist/pixi.d.ts",
+      "import": "./dist/pixi.js"
+    },
+    "./three": {
+      "types": "./dist/three.d.ts",
+      "import": "./dist/three.js"
+    },
+    "./export": {
+      "types": "./dist/export.d.ts",
+      "import": "./dist/export.js"
+    },
+    "./export/node": {
+      "types": "./dist/export-node.d.ts",
+      "import": "./dist/export-node.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "npm run clean && tsup",
+    "clean": "node scripts/clean.mjs",
+    "lint": "eslint .",
+    "source:check": "node scripts/check-source.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "package:smoke": "node scripts/smoke-package.mjs",
+    "check": "npm run lint && npm run typecheck && npm run source:check && npm test && npm run build && npm run package:smoke",
+    "pack:check": "npm run build && npm run package:smoke && node scripts/check-pack.mjs",
+    "test:consumers": "npm run build && npm run package:smoke && node scripts/test-clean-consumers.mjs",
+    "prepack": "npm run build && npm run package:smoke"
+  },
+  "peerDependencies": {
+    "pixi.js": ">=8.19.0 <9.0.0",
+    "three": ">=0.184.0 <0.186.0"
+  },
+  "peerDependenciesMeta": {
+    "pixi.js": {
+      "optional": true
+    },
+    "three": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^25.6.2",
+    "@types/three": "^0.184.1",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.2",
+    "eslint-plugin-prettier": "^5.2.6",
+    "pixi.js": "8.19.0",
+    "playwright": "1.60.0",
+    "prettier": "^3.5.3",
+    "three": "0.184.0",
+    "tsup": "^8.5.1",
+    "typescript": "~5.7.3",
+    "typescript-eslint": "^8.25.0",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

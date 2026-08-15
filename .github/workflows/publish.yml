@@ -1,0 +1,49 @@
+name: Publish Package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js for npm Trusted Publishing
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Use an OIDC-capable npm CLI
+        run: npm install --global "npm@^11.5.1"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify release tag matches package version
+        run: node scripts/verify-release-tag.mjs "$GITHUB_REF_NAME"
+
+      - name: Check source and package build
+        run: npm run check
+
+      - name: Audit packed contents
+        run: npm run pack:check
+
+      - name: Test clean packed consumers
+        run: npm run test:consumers
+
+      - name: Publish to npm
+        run: npm publish

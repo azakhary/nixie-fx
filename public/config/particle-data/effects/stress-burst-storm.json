@@ -1,0 +1,250 @@
+{
+  "app": "vfx-editor",
+  "kind": "particle-effect",
+  "version": 1,
+  "id": "stress-burst-storm",
+  "name": "Stress - Burst Storm",
+  "emitters": [
+    {
+      "id": "burst-ring",
+      "name": "Burst Ring",
+      "enabled": true,
+      "mode": "billboard",
+      "maxParticles": 4096,
+      "duration": 0.6,
+      "loop": true,
+      "modules": {
+        "velocity": true,
+        "color": true,
+        "size": true,
+        "rotation": true
+      },
+      "spawn": {
+        "rate": 0,
+        "rateValue": {
+          "mode": "constant",
+          "value": 0
+        },
+        "shape": "circle",
+        "radius": 0.65,
+        "radiusThickness": 1,
+        "arc": 360,
+        "arcMode": "burstSpread",
+        "sphericalDirectionAmount": 1,
+        "randomDirectionAmount": 0.15,
+        "bursts": [
+          {
+            "time": 0,
+            "count": 2048,
+            "cycles": 1,
+            "interval": 0.1,
+            "probability": 1
+          }
+        ]
+      },
+      "forces": {
+        "gravityValue": {
+          "mode": "constant",
+          "value": 2.4
+        },
+        "dragValue": {
+          "mode": "constant",
+          "value": 0.12
+        }
+      },
+      "billboard": {
+        "shape": "circle",
+        "sizeValue": {
+          "mode": "curve",
+          "curve": [
+            {
+              "x": 0,
+              "y": 0.16
+            },
+            {
+              "x": 0.25,
+              "y": 0.1
+            },
+            {
+              "x": 1,
+              "y": 0.02
+            }
+          ]
+        },
+        "softness": 0.35
+      },
+      "initializeParticle": {
+        "lifetime": {
+          "mode": "random",
+          "min": 0.45,
+          "max": 0.9
+        },
+        "color": {
+          "mode": "constant",
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "colorB": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "intensity": {
+            "mode": "constant",
+            "value": 1
+          }
+        },
+        "size": {
+          "mode": "constant",
+          "value": 1
+        },
+        "rotation": {
+          "mode": "random",
+          "min": -6.28318,
+          "max": 6.28318
+        },
+        "angularVelocity": {
+          "mode": "random",
+          "min": -18,
+          "max": 18
+        },
+        "velocity": {
+          "mode": "vector",
+          "min": [
+            -0.5,
+            0.5,
+            -0.5
+          ],
+          "max": [
+            0.5,
+            2.5,
+            0.5
+          ],
+          "speed": {
+            "mode": "random",
+            "min": 3.5,
+            "max": 9
+          }
+        }
+      }
+    },
+    {
+      "id": "burst-dust",
+      "name": "Burst Dust",
+      "enabled": true,
+      "mode": "billboard",
+      "maxParticles": 1536,
+      "duration": 0.6,
+      "loop": true,
+      "modules": {
+        "velocity": true,
+        "color": true,
+        "size": true,
+        "rotation": true
+      },
+      "spawn": {
+        "rate": 0,
+        "rateValue": {
+          "mode": "constant",
+          "value": 0
+        },
+        "shape": "cone",
+        "radius": 1.2,
+        "angle": 55,
+        "length": 0.4,
+        "emitFrom": "volume",
+        "arcMode": "random",
+        "randomDirectionAmount": 0.45,
+        "randomPositionAmount": 0.18,
+        "bursts": [
+          {
+            "time": 0,
+            "count": 900,
+            "cycles": 1,
+            "interval": 0.1,
+            "probability": 1
+          }
+        ]
+      },
+      "forces": {
+        "gravityValue": {
+          "mode": "constant",
+          "value": 1
+        },
+        "dragValue": {
+          "mode": "constant",
+          "value": 0.2
+        }
+      },
+      "billboard": {
+        "shape": "circle",
+        "sizeValue": {
+          "mode": "randomCurve",
+          "curve": [
+            {
+              "x": 0,
+              "y": 0.22
+            },
+            {
+              "x": 1,
+              "y": 0.05
+            }
+          ],
+          "curveB": [
+            {
+              "x": 0,
+              "y": 0.38
+            },
+            {
+              "x": 1,
+              "y": 0.08
+            }
+          ]
+        },
+        "softness": 0.8
+      },
+      "initializeParticle": {
+        "lifetime": {
+          "mode": "random",
+          "min": 0.7,
+          "max": 1.4
+        },
+        "color": {
+          "mode": "constant",
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "colorB": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "intensity": {
+            "mode": "constant",
+            "value": 1
+          }
+        },
+        "size": {
+          "mode": "constant",
+          "value": 1
+        },
+        "velocity": {
+          "mode": "shapeDirection",
+          "speed": {
+            "mode": "random",
+            "min": 0.8,
+            "max": 3.4
+          }
+        }
+      }
+    }
+  ]
+}

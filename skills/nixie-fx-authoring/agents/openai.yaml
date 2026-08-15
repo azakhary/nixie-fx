@@ -1,0 +1,4 @@
+interface:
+  display_name: "NixieFX Authoring"
+  short_description: "Create and export NixieFX effects"
+  default_prompt: "Use $nixie-fx-authoring to create and validate a particle effect in my NixieFX project."

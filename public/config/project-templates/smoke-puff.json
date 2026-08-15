@@ -1,0 +1,238 @@
+{
+  "app": "vfx-editor",
+  "kind": "particle-effect",
+  "version": 1,
+  "id": "smoke-puff",
+  "name": "Smoke Puff",
+  "emitters": [
+    {
+      "id": "soft-smoke",
+      "name": "Soft Smoke",
+      "enabled": true,
+      "mode": "billboard",
+      "maxParticles": 260,
+      "duration": 1.25,
+      "loop": false,
+      "modules": {
+        "velocity": true,
+        "color": true,
+        "size": true,
+        "rotation": true,
+        "noise": true,
+        "externalForces": true
+      },
+      "spawn": {
+        "rate": 24,
+        "rateValue": {
+          "mode": "curve",
+          "curve": [
+            {
+              "x": 0,
+              "y": 120
+            },
+            {
+              "x": 0.35,
+              "y": 60
+            },
+            {
+              "x": 1,
+              "y": 0
+            }
+          ]
+        },
+        "shape": "circle",
+        "radius": 0.45,
+        "radiusValue": {
+          "mode": "constant",
+          "value": 0.45
+        },
+        "radiusThickness": 0.7,
+        "randomDirectionAmount": 0.55,
+        "sphericalDirectionAmount": 0.35,
+        "bursts": [
+          {
+            "time": 0,
+            "count": 36,
+            "cycles": 1,
+            "interval": 0.1,
+            "probability": 1
+          }
+        ]
+      },
+      "forces": {
+        "gravity": -0.25,
+        "gravityValue": {
+          "mode": "constant",
+          "value": -0.25
+        },
+        "drag": 0.18,
+        "dragValue": {
+          "mode": "constant",
+          "value": 0.18
+        }
+      },
+      "billboard": {
+        "shape": "circle",
+        "softness": 0.85,
+        "sizeValue": {
+          "mode": "curve",
+          "curve": [
+            {
+              "x": 0,
+              "y": 0.22
+            },
+            {
+              "x": 0.45,
+              "y": 0.9
+            },
+            {
+              "x": 1,
+              "y": 1.35
+            }
+          ]
+        }
+      },
+      "color": {
+        "gradient": {
+          "mode": "blend",
+          "colorStops": [
+            {
+              "position": 0,
+              "color": [
+                0.52,
+                0.52,
+                0.5
+              ]
+            },
+            {
+              "position": 1,
+              "color": [
+                0.18,
+                0.18,
+                0.2
+              ]
+            }
+          ],
+          "alphaStops": [
+            {
+              "position": 0,
+              "alpha": 0
+            },
+            {
+              "position": 0.18,
+              "alpha": 0.38
+            },
+            {
+              "position": 0.72,
+              "alpha": 0.24
+            },
+            {
+              "position": 1,
+              "alpha": 0
+            }
+          ]
+        }
+      },
+      "advanced": {
+        "noise": {
+          "strength": {
+            "mode": "curve",
+            "curve": [
+              {
+                "x": 0,
+                "y": 0.05
+              },
+              {
+                "x": 1,
+                "y": 0.4
+              }
+            ]
+          },
+          "frequency": 0.9,
+          "speed": 0.35,
+          "scroll": [
+            0.1,
+            0.35,
+            0.1
+          ],
+          "octaves": 3,
+          "damping": 0.52
+        },
+        "externalForces": {
+          "wind": [
+            0.2,
+            0.4,
+            0
+          ],
+          "gravityMultiplier": {
+            "mode": "constant",
+            "value": 0
+          },
+          "drag": {
+            "mode": "constant",
+            "value": 0.12
+          },
+          "vortexStrength": 0.6
+        }
+      },
+      "initializeParticle": {
+        "lifetime": {
+          "mode": "random",
+          "min": 1.2,
+          "max": 2.4
+        },
+        "color": {
+          "mode": "constant",
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "colorB": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "intensity": {
+            "mode": "constant",
+            "value": 1
+          }
+        },
+        "size": {
+          "mode": "constant",
+          "value": 1
+        },
+        "rotation": {
+          "mode": "random",
+          "min": -3.14,
+          "max": 3.14
+        },
+        "angularVelocity": {
+          "mode": "random",
+          "min": -0.9,
+          "max": 0.9
+        },
+        "velocity": {
+          "mode": "vector",
+          "min": [
+            -0.5,
+            0.4,
+            -0.5
+          ],
+          "max": [
+            0.5,
+            1.8,
+            0.5
+          ],
+          "speed": {
+            "mode": "random",
+            "min": 0.3,
+            "max": 2.2
+          }
+        }
+      }
+    }
+  ]
+}

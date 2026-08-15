@@ -1,0 +1,4 @@
+interface:
+  display_name: "NixieFX Runtime"
+  short_description: "Integrate NixieFX effects into games"
+  default_prompt: "Use $nixie-fx-runtime to integrate an exported NixieFX effect into my game runtime."

@@ -1,0 +1,14 @@
+{
+  "app": "vfx-editor",
+  "kind": "particle-effect",
+  "version": 1,
+  "targetProfile": "pixi-ui-2d",
+  "id": "starter-effect",
+  "name": "Starter Effect",
+  "emitters": [
+    {
+      "id": "emitter-1",
+      "name": "Emitter"
+    }
+  ]
+}

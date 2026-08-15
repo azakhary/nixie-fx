@@ -1,0 +1,196 @@
+{
+  "app": "vfx-editor",
+  "kind": "particle-effect",
+  "version": 1,
+  "id": "impact-burst",
+  "name": "Impact Burst",
+  "emitters": [
+    {
+      "id": "impact-sparks",
+      "name": "Sparks",
+      "enabled": true,
+      "mode": "billboard",
+      "maxParticles": 220,
+      "duration": 0.45,
+      "loop": false,
+      "modules": {
+        "velocity": true,
+        "color": true,
+        "size": true,
+        "rotation": true,
+        "forceOverLifetime": true
+      },
+      "spawn": {
+        "rate": 0,
+        "rateValue": {
+          "mode": "constant",
+          "value": 0
+        },
+        "shape": "circle",
+        "radius": 0.12,
+        "radiusValue": {
+          "mode": "constant",
+          "value": 0.12
+        },
+        "bursts": [
+          {
+            "time": 0,
+            "count": 90,
+            "cycles": 1,
+            "interval": 0.1,
+            "probability": 1
+          }
+        ]
+      },
+      "forces": {
+        "gravity": 6,
+        "gravityValue": {
+          "mode": "constant",
+          "value": 6
+        },
+        "drag": 0.22,
+        "dragValue": {
+          "mode": "constant",
+          "value": 0.22
+        }
+      },
+      "billboard": {
+        "shape": "square",
+        "sizeValue": {
+          "mode": "curve",
+          "curve": [
+            {
+              "x": 0,
+              "y": 0.18
+            },
+            {
+              "x": 1,
+              "y": 0.02
+            }
+          ]
+        }
+      },
+      "color": {
+        "gradient": {
+          "mode": "blend",
+          "colorStops": [
+            {
+              "position": 0,
+              "color": [
+                1,
+                0.9,
+                0.4
+              ]
+            },
+            {
+              "position": 0.45,
+              "color": [
+                1,
+                0.35,
+                0.08
+              ]
+            },
+            {
+              "position": 1,
+              "color": [
+                0.35,
+                0.12,
+                0.04
+              ]
+            }
+          ],
+          "alphaStops": [
+            {
+              "position": 0,
+              "alpha": 1
+            },
+            {
+              "position": 0.65,
+              "alpha": 0.85
+            },
+            {
+              "position": 1,
+              "alpha": 0
+            }
+          ]
+        }
+      },
+      "advanced": {
+        "forceOverLifetime": {
+          "force": [
+            0,
+            -9,
+            0
+          ],
+          "randomized": [
+            2,
+            1,
+            2
+          ],
+          "multiplier": {
+            "mode": "constant",
+            "value": 1
+          }
+        }
+      },
+      "initializeParticle": {
+        "lifetime": {
+          "mode": "random",
+          "min": 0.18,
+          "max": 0.52
+        },
+        "color": {
+          "mode": "constant",
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "colorB": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "intensity": {
+            "mode": "constant",
+            "value": 1
+          }
+        },
+        "size": {
+          "mode": "constant",
+          "value": 1
+        },
+        "rotation": {
+          "mode": "random",
+          "min": -3.14,
+          "max": 3.14
+        },
+        "angularVelocity": {
+          "mode": "random",
+          "min": -14,
+          "max": 14
+        },
+        "velocity": {
+          "mode": "vector",
+          "min": [
+            -2.5,
+            2,
+            -2.5
+          ],
+          "max": [
+            2.5,
+            8,
+            2.5
+          ],
+          "speed": {
+            "mode": "random",
+            "min": 4,
+            "max": 13
+          }
+        }
+      }
+    }
+  ]
+}

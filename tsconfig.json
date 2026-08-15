@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "nixie-fx": ["./src/index.ts"],
+      "nixie-fx/project": ["./src/project.ts"],
+      "nixie-fx/materials": ["./src/materials.ts"],
+      "nixie-fx/pixi": ["./src/pixi.ts"],
+      "nixie-fx/three": ["./src/three.ts"],
+      "nixie-fx/export": ["./src/export.ts"],
+      "nixie-fx/export/node": ["./src/export-node.ts"]
+    },
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src",
+    "tests",
+    "examples",
+    "eslint.config.mjs",
+    "tsup.config.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": ["tests/pixi/tier2PixelSmoke.test-support.ts"]
+}

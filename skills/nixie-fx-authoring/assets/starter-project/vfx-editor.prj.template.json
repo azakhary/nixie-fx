@@ -1,0 +1,17 @@
+{
+  "app": "vfx-editor",
+  "kind": "project",
+  "version": 1,
+  "id": "REPLACE-WITH-UNIQUE-PROJECT-ID",
+  "name": "REPLACE-WITH-PROJECT-NAME",
+  "settings": {
+    "effectDataPath": "effects",
+    "outputPath": "out/vfx",
+    "assetRootPath": "assets",
+    "materialsFolder": "materials",
+    "allowExternalOutput": false,
+    "lastEffectFile": "starter-effect.json"
+  },
+  "createdAt": "REPLACE-WITH-CREATED-ISO-TIMESTAMP",
+  "updatedAt": "REPLACE-WITH-UPDATED-ISO-TIMESTAMP"
+}
