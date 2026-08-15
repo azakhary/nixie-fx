@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Chromium for the Pixi pixel smoke
+        run: npx playwright install --with-deps chromium
+
       - name: Check source and package build
         run: npm run check
 
