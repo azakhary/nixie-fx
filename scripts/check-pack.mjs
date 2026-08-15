@@ -1,4 +1,12 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+const packageJson = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
+if (packageJson.bin?.["nixie-fx"] !== "dist/cli.js") {
+  throw new Error('package.json must expose bin.nixie-fx as "dist/cli.js".');
+}
 
 const output = execFileSync(
   npmCommand(),

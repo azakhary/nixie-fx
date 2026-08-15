@@ -22,7 +22,7 @@
   "type": "module",
   "sideEffects": false,
   "bin": {
-    "nixie-fx": "./dist/cli.js"
+    "nixie-fx": "dist/cli.js"
   },
   "files": [
     "dist",
