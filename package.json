@@ -1,6 +1,6 @@
 {
   "name": "nixie-fx",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Portable particle and VFX runtimes for PixiJS and Three.js",
   "keywords": [
     "particles",
