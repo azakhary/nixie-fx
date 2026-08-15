@@ -798,6 +798,7 @@ describe("effective alignment velocity", () => {
       loopAge,
       [0, 0, 0],
       1,
+      displacedPositionAt(emitter, state, 0.5, life, 0.5, seed, loopAge),
       out,
     );
     expect(out[0]).toBeCloseTo(1, 5);
@@ -832,6 +833,7 @@ describe("effective alignment velocity", () => {
       loopAge,
       [0, 0, 0],
       1,
+      displacedPositionAt(emitter, state, 0.5, life, 0.5, seed, loopAge),
       early,
     );
     computeEffectiveAlignmentVelocity(
@@ -845,6 +847,7 @@ describe("effective alignment velocity", () => {
       loopAge,
       [0, 0, 0],
       1,
+      displacedPositionAt(emitter, state, 1.5, life, 1.5, seed, loopAge),
       late,
     );
     // The spawn velocity is purely +X; noise injects lateral / vertical turn.
@@ -882,6 +885,7 @@ describe("effective alignment velocity", () => {
         loopAge,
         [0, 0, 0],
         1,
+        displacedPositionAt(emitter, state, age, life, age, seed, loopAge),
         coarse,
       );
       const fine = finiteDiffAlignmentVelocity(
@@ -921,6 +925,7 @@ describe("effective alignment velocity", () => {
       loopAge,
       [0, 0, 0],
       1,
+      displacedPositionAt(emitter, state, 1, life, 1, seed, loopAge),
       out,
     );
     expect(out[0]).toBeCloseTo(1, 4);
@@ -960,6 +965,15 @@ describe("effective alignment velocity", () => {
       withCollision.loopAge,
       [0, 0, 0],
       1,
+      displacedPositionAt(
+        withCollision.emitter,
+        withCollision.state,
+        1,
+        withCollision.life,
+        1,
+        withCollision.seed,
+        withCollision.loopAge,
+      ),
       withColl,
     );
     computeEffectiveAlignmentVelocity(
@@ -973,6 +987,15 @@ describe("effective alignment velocity", () => {
       noCollision.loopAge,
       [0, 0, 0],
       1,
+      displacedPositionAt(
+        noCollision.emitter,
+        noCollision.state,
+        1,
+        noCollision.life,
+        1,
+        noCollision.seed,
+        noCollision.loopAge,
+      ),
       withoutColl,
     );
     // Collision never enters the finite difference: no impact spike, byte-equal.
@@ -1005,6 +1028,7 @@ describe("effective alignment velocity", () => {
       loopAge,
       [0, 0, 0],
       1,
+      displacedPositionAt(emitter, state, 0.001, life, 0.001, seed, loopAge),
       out,
     );
     expect(out.every(Number.isFinite)).toBe(true);
@@ -1049,6 +1073,7 @@ describe("effective alignment velocity", () => {
       loopAge,
       [0, 0, 0],
       1,
+      displacedPositionAt(emitter, state, age, life, age, seed, loopAge),
       out,
     );
     const analytic = sampleParticleMotion(
@@ -1113,6 +1138,7 @@ describe("effective alignment velocity", () => {
         loopAge,
         [0, 0, 0],
         1,
+        displacedPositionAt(emitter, state, age, life, age, seed, loopAge),
         out,
       );
       return out;
@@ -1211,6 +1237,47 @@ function makeEffVelState(overrides: Record<string, unknown> = {}): {
 
 // Reference finite difference at an arbitrary dt, replicating the evaluator's
 // forward/central logic so tests can pin dt=1/120 against a finer step.
+/**
+ * Mirrors the renderers' pre-collision displaced position at (age, time):
+ * analytic motion + positional modules, collision excluded. This is what the
+ * renderers pass to computeEffectiveAlignmentVelocity as
+ * `currentDisplacedPosition`.
+ */
+function displacedPositionAt(
+  emitter: ParticleEmitterDefinition,
+  state: ParticleEmitterRuntimeState,
+  ageSeconds: number,
+  life: number,
+  timeSeconds: number,
+  seed: number,
+  loopAge: number,
+): Vec3 {
+  const clampedAge = Math.max(0, ageSeconds);
+  const normalizedAge = Math.min(
+    1,
+    Math.max(0, clampedAge / Math.max(0.001, life)),
+  );
+  const motion = sampleParticleMotion(
+    emitter,
+    state,
+    0,
+    clampedAge,
+    normalizedAge,
+    [0, 0, 0],
+  );
+  const sample: ParticleMotionSample = {
+    seed,
+    normalizedAge,
+    loopAge,
+    ageSeconds: clampedAge,
+    timeSeconds,
+    world: motion.position,
+    velocity: motion.velocity,
+  };
+  applyPositionalMotionModules(emitter, sample);
+  return [motion.position[0], motion.position[1], motion.position[2]];
+}
+
 function finiteDiffAlignmentVelocity(
   emitter: ParticleEmitterDefinition,
   state: ParticleEmitterRuntimeState,
@@ -1221,32 +1288,8 @@ function finiteDiffAlignmentVelocity(
   loopAge: number,
   dt: number,
 ): Vec3 {
-  const evalAt = (age: number, time: number): Vec3 => {
-    const clampedAge = Math.max(0, age);
-    const normalizedAge = Math.min(
-      1,
-      Math.max(0, clampedAge / Math.max(0.001, life)),
-    );
-    const motion = sampleParticleMotion(
-      emitter,
-      state,
-      0,
-      clampedAge,
-      normalizedAge,
-      [0, 0, 0],
-    );
-    const sample: ParticleMotionSample = {
-      seed,
-      normalizedAge,
-      loopAge,
-      ageSeconds: clampedAge,
-      timeSeconds: time,
-      world: motion.position,
-      velocity: motion.velocity,
-    };
-    applyPositionalMotionModules(emitter, sample);
-    return [motion.position[0], motion.position[1], motion.position[2]];
-  };
+  const evalAt = (age: number, time: number): Vec3 =>
+    displacedPositionAt(emitter, state, age, life, time, seed, loopAge);
   const forward = ageSeconds < dt;
   const pPlus = evalAt(ageSeconds + dt, timeSeconds + dt);
   const pMinus = forward

@@ -184,16 +184,10 @@ const COLLISION_EPS = 1e-6;
 const COLLISION_MAX_BOUNCES = 64;
 
 // Finite-difference step for the velocity-alignment effective velocity (I13-F).
-// ~half a 60fps frame each side; direction-only, so magnitude scale is moot.
+// ~half a 60fps frame; direction-only, so magnitude scale is moot.
 const EFFECTIVE_VELOCITY_DT_SECONDS = 1 / 120;
 
 const effVelMotionPlus: ParticleMotionResult = {
-  position: [0, 0, 0],
-  velocity: [0, 0, 0],
-  scratchA: [0, 0, 0],
-  scratchB: [0, 0, 0],
-};
-const effVelMotionMinus: ParticleMotionResult = {
   position: [0, 0, 0],
   velocity: [0, 0, 0],
   scratchA: [0, 0, 0],
@@ -207,15 +201,6 @@ const effVelSamplePlus: ParticleMotionSample = {
   timeSeconds: 0,
   world: effVelMotionPlus.position,
   velocity: effVelMotionPlus.velocity,
-};
-const effVelSampleMinus: ParticleMotionSample = {
-  seed: 0,
-  normalizedAge: 0,
-  loopAge: 0,
-  ageSeconds: 0,
-  timeSeconds: 0,
-  world: effVelMotionMinus.position,
-  velocity: effVelMotionMinus.velocity,
 };
 
 const curlScratch: [number, number, number] = [0, 0, 0];
@@ -382,15 +367,20 @@ export function applyCollisionResponse(
 
 /**
  * Effective (post-displacement) velocity for velocity-ALIGNMENT only (I13-F).
- * Central finite difference of the fully-displaced position — analytic motion
+ * Forward finite difference of the fully-displaced position — analytic motion
  * PLUS the positional modules (force → external → noise), COLLISION EXCLUDED —
  * so noise/force/analytic all continuously turn a velocity-aligned sprite.
- * Forward difference when `ageSeconds < dt` so we never sample age < 0 and the
- * I12-D noise spawn ramp stays continuous. Both offsets advance `timeSeconds`
- * with `ageSeconds` (total time derivative), capturing noise's temporal scroll.
- * Writes and returns `out`. Cost: 2× `sampleParticleMotion` + 2× positional
- * modules per call — gate the CALL on `emitter.render.alignAxis === "velocity"`.
- * The collision reflection (I13-H) is composed by the caller, not here.
+ * The caller has already computed the displaced position at (ageSeconds,
+ * timeSeconds) for rendering; passing it in as `currentDisplacedPosition`
+ * (pre-collision — exactly what `applyPositionalMotionModules` produced)
+ * means only the t+dt sample is evaluated here: 1× `sampleParticleMotion` +
+ * 1× positional modules per call, half the original central-difference cost.
+ * The offset advances `timeSeconds` with `ageSeconds` (total time
+ * derivative), capturing noise's temporal scroll. Direction-only consumers
+ * make the first-order accuracy moot (this was already the behavior for
+ * particles younger than dt). Writes and returns `out`. Gate the CALL on
+ * `emitter.render.alignAxis === "velocity"`. The collision reflection
+ * (I13-H) is composed by the caller, not here.
  */
 export function computeEffectiveAlignmentVelocity(
   emitter: ParticleEmitterDefinition,
@@ -403,10 +393,10 @@ export function computeEffectiveAlignmentVelocity(
   loopAge: number,
   currentEmitterPosition: Vec3 | undefined,
   initialVelocityMultiplier: number,
+  currentDisplacedPosition: Vec3,
   out: Vec3,
 ): Vec3 {
   const dt = EFFECTIVE_VELOCITY_DT_SECONDS;
-  const forward = ageSeconds < dt;
 
   evaluateDisplacedPosition(
     emitter,
@@ -422,27 +412,12 @@ export function computeEffectiveAlignmentVelocity(
     effVelMotionPlus,
     effVelSamplePlus,
   );
-  evaluateDisplacedPosition(
-    emitter,
-    state,
-    particleIndex,
-    forward ? ageSeconds : ageSeconds - dt,
-    life,
-    forward ? timeSeconds : timeSeconds - dt,
-    seed,
-    loopAge,
-    currentEmitterPosition,
-    initialVelocityMultiplier,
-    effVelMotionMinus,
-    effVelSampleMinus,
-  );
 
-  const inv = 1 / (forward ? dt : 2 * dt);
+  const inv = 1 / dt;
   const pPlus = effVelMotionPlus.position;
-  const pMinus = effVelMotionMinus.position;
-  out[0] = (pPlus[0] - pMinus[0]) * inv;
-  out[1] = (pPlus[1] - pMinus[1]) * inv;
-  out[2] = (pPlus[2] - pMinus[2]) * inv;
+  out[0] = (pPlus[0] - currentDisplacedPosition[0]) * inv;
+  out[1] = (pPlus[1] - currentDisplacedPosition[1]) * inv;
+  out[2] = (pPlus[2] - currentDisplacedPosition[2]) * inv;
   return out;
 }
 

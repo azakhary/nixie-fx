@@ -26,13 +26,15 @@ import {
   type ParticleSubEmitterSpawnRequest,
 } from "../../engine/particles";
 import {
-  applyParticleMotionModules,
+  applyCollisionResponse,
+  applyPositionalMotionModules,
   computeEffectiveAlignmentVelocity,
   particleRotationBySpeedOffset,
   particleSizeBySpeedMultiplier,
   particleTrailSample,
   sampleParticleModuleColor,
   sampleTextureSheetAnimationFrame,
+  type ParticleMotionSample,
 } from "../modules";
 import type { VfxTextureAssetRef } from "../assets/types";
 import { collectParticleTextureRefs } from "../assets/textureRefs";
@@ -271,6 +273,7 @@ const SDR_ADDITIVE_ALPHA_GAIN_PER_STOP = 0.28;
 // I13-F velocity-alignment finite-difference scratch (module scope: updateParticle
 // is a free function; rendering is single-threaded, one call consumes it fully).
 const pixiAnalyticVelocityScratch: Vec3 = [0, 0, 0];
+const pixiPreCollisionWorldScratch: Vec3 = [0, 0, 0];
 const pixiEffectiveAlignmentVelocity: Vec3 = [0, 0, 0];
 
 export class PixiVfxEffectInstance {
@@ -1800,17 +1803,27 @@ function updateParticle(
     motion.position[1],
     motion.position[2],
   ];
+  // Split module pass (was applyParticleMotionModules): the PRE-collision
+  // displaced position feeds the effective-alignment forward difference
+  // below, saving its second motion evaluation (I13-F: collision excluded).
+  const motionModuleSample: ParticleMotionSample = {
+    seed,
+    normalizedAge,
+    loopAge,
+    ageSeconds,
+    timeSeconds,
+    world,
+    velocity,
+  };
+  applyPositionalMotionModules(emitter, motionModuleSample);
+  if (alignToVelocity) {
+    pixiPreCollisionWorldScratch[0] = world[0];
+    pixiPreCollisionWorldScratch[1] = world[1];
+    pixiPreCollisionWorldScratch[2] = world[2];
+  }
   if (
-    !applyParticleMotionModules({
-      emitter,
-      seed,
-      normalizedAge,
-      loopAge,
-      ageSeconds,
-      timeSeconds,
-      world,
-      velocity,
-    })
+    emitter.modules.collision &&
+    !applyCollisionResponse(emitter, motionModuleSample)
   ) {
     return undefined;
   }
@@ -1903,6 +1916,7 @@ function updateParticle(
       loopAge,
       emitterPosition,
       1,
+      pixiPreCollisionWorldScratch,
       pixiEffectiveAlignmentVelocity,
     );
     eff[0] += velocity[0] - pixiAnalyticVelocityScratch[0];

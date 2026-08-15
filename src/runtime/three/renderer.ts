@@ -46,7 +46,8 @@ import {
   type ParticleMotionResult,
 } from "../../engine/particles";
 import {
-  applyParticleMotionModulesToSample,
+  applyCollisionResponse,
+  applyPositionalMotionModules,
   computeEffectiveAlignmentVelocity,
   particleRotationBySpeedOffset,
   particleSizeBySpeedMultiplier,
@@ -262,6 +263,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   private readonly hdrColorScratch: Vec3 = [1, 1, 1];
   private readonly renderColorScratch: Vec3 = [1, 1, 1];
   private readonly analyticVelocityScratch: Vec3 = [0, 0, 0];
+  private readonly preCollisionWorldScratch: Vec3 = [0, 0, 0];
   private readonly effectiveAlignmentVelocity: Vec3 = [0, 0, 0];
   /** Host-injected emission geometry, taking precedence over meshProvider. */
   private readonly emissionOverrides = new Map<string, BufferGeometry>();
@@ -879,7 +881,20 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     motionModuleSample.timeSeconds = timeSeconds;
     motionModuleSample.world = world;
     motionModuleSample.velocity = velocity;
-    if (!applyParticleMotionModulesToSample(emitter, motionModuleSample)) {
+    // Split module pass (was applyParticleMotionModulesToSample): the
+    // PRE-collision displaced position feeds the effective-alignment forward
+    // difference below, saving its second motion evaluation (I13-F contract:
+    // collision excluded).
+    applyPositionalMotionModules(emitter, motionModuleSample);
+    if (alignToVelocity) {
+      this.preCollisionWorldScratch[0] = world[0];
+      this.preCollisionWorldScratch[1] = world[1];
+      this.preCollisionWorldScratch[2] = world[2];
+    }
+    if (
+      emitter.modules.collision &&
+      !applyCollisionResponse(emitter, motionModuleSample)
+    ) {
       return undefined;
     }
 
@@ -990,6 +1005,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
         loopAge,
         this.position,
         this.runner.effectiveInitialVelocityMultiplier(emitter.id),
+        this.preCollisionWorldScratch,
         this.effectiveAlignmentVelocity,
       );
       // Compose I13-H's collision reflection (0 when not collided). `velocity` is
