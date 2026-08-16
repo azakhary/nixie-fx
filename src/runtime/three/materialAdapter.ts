@@ -39,6 +39,10 @@ import {
   createMaterialPreviewFragment,
 } from "../materials/materialShaderCompiler";
 import { threeAlphaMapFromOpacitySource } from "./alphaTexture";
+import {
+  getProceduralBillboardTexture,
+  proceduralBillboardTextureKey,
+} from "./proceduralBillboardTexture";
 import type { ThreeVfxEffectInstanceOptions } from "./types";
 
 export interface ThreeEmitterMaterialResolution {
@@ -86,7 +90,9 @@ export function createThreeEmitterMaterial(
   let texture = sourceTexture;
   const ownedTextures: Texture[] = [...source.ownedTextures];
   let key = [
-    emitterTexturePath(emitter) ?? "",
+    emitterTexturePath(emitter) ??
+      emitterProceduralBillboardKey(emitter) ??
+      "",
     emitter.render.opacitySource,
     Number(emitter.render.opacityInvert),
   ].join(":");
@@ -252,6 +258,25 @@ export function emitterTexturePath(
     : emitter.render.texture;
 }
 
+/**
+ * The procedural-texture cache key for an assetless billboard emitter, or
+ * null when the emitter resolves a real texture (or renders via a material).
+ * Shared by the material key and the renderer's static view key so a
+ * `billboard.shape`/`softness` edit rebuilds the view.
+ */
+export function emitterProceduralBillboardKey(
+  emitter: ParticleEmitterDefinition,
+  materialGraph?: ShaderGraph,
+): string | null {
+  if (emitter.mode !== "billboard") return null;
+  if (emitter.render.material) return null;
+  if (emitterTexturePath(emitter, materialGraph)) return null;
+  return proceduralBillboardTextureKey(
+    emitter.billboard.shape,
+    emitter.billboard.softness,
+  );
+}
+
 function resolveEmitterTexture(
   emitter: ParticleEmitterDefinition,
   options: ThreeVfxEffectInstanceOptions,
@@ -259,13 +284,26 @@ function resolveEmitterTexture(
 ): { texture: Texture | null; ownedTextures: Texture[] } {
   const path = emitterTexturePath(emitter, materialGraph);
   if (!path) {
-    const fallback = emitter.render.material
-      ? createFallbackMaterialTexture()
-      : null;
-    return {
-      texture: fallback,
-      ownedTextures: fallback ? [fallback] : [],
-    };
+    if (emitter.render.material) {
+      const fallback = createFallbackMaterialTexture();
+      return {
+        texture: fallback,
+        ownedTextures: fallback ? [fallback] : [],
+      };
+    }
+    if (emitter.mode === "billboard") {
+      // Engine contract: a null texture falls back to the procedural
+      // billboard shape (see ParticleRenderSettings.texture). The texture is
+      // cached/shared — never owned by the resolution.
+      return {
+        texture: getProceduralBillboardTexture(
+          emitter.billboard.shape,
+          emitter.billboard.softness,
+        ),
+        ownedTextures: [],
+      };
+    }
+    return { texture: null, ownedTextures: [] };
   }
   return {
     texture:

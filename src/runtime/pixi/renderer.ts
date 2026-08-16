@@ -2807,7 +2807,9 @@ function fallbackTextureKeyForEmitter(
   emitter: ParticleEmitterDefinition,
 ): PixiVfxProceduralTextureKey {
   if (emitter.mode === "mesh") return emitter.mesh.template;
-  return "square";
+  // Engine contract: an assetless billboard falls back to the procedural
+  // billboard shape (F12) — honor `billboard.shape` instead of always square.
+  return emitter.billboard.shape === "square" ? "square" : "circle";
 }
 
 function createParticle(texture: Texture): Particle {
