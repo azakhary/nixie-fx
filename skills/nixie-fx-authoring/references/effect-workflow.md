@@ -17,7 +17,41 @@ npx nixie-fx effect create \
   --profile pixi-ui-2d
 ```
 
-Read the CLI output to learn the created path. Inspect the generated JSON before editing. The generated effect is the schema reference; do not construct every nested module from memory.
+Read the CLI output to learn the created path. Inspect the generated JSON before editing. The generated effect is the schema reference; do not construct every nested module from memory. The one exception is documented below: generated effects ship with `bursts: []`, so the burst entry shape is not discoverable from the default JSON.
+
+## Spawn shapes and bursts
+
+`spawn.shape` is one of: `point`, `circle`, `box`, `cone`, `sphere`, `hemisphere`, or `mesh` (`mesh` additionally needs a prepared `spawn.meshAsset` reference).
+
+Continuous emission uses `spawn.rate` (particles per second). Burst emission uses `spawn.bursts`, an array of schedule entries:
+
+```json
+{ "time": 0, "count": 18, "cycles": 1, "interval": 0.1, "probability": 1 }
+```
+
+- `time` — seconds into the emitter's duration when the burst fires (0–60).
+- `count` — particles per cycle (1–4096; entries with count 0 are dropped).
+- `cycles` — how many times the burst repeats per duration (1–256).
+- `interval` — seconds between cycles when `cycles > 1` (0–60).
+- `probability` — chance that each cycle actually fires (0–1).
+
+### One-shot burst
+
+The most common game VFX pattern (impacts, pickups, explosions): zero the continuous rate, schedule a single burst, and make the emitter non-looping so the effect completes:
+
+```json
+{
+  "loop": false,
+  "spawn": {
+    "rate": 0,
+    "rateValue": { "mode": "constant", "value": 0 },
+    "bursts": [
+      { "time": 0, "count": 24, "cycles": 1, "interval": 0, "probability": 1 }
+    ],
+    "shape": "point"
+  }
+}
+```
 
 ## Edit safely
 

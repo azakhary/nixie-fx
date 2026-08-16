@@ -62,6 +62,8 @@ await textureProvider.preload?.(
 
 const vfx = new PixiVfxRenderer({
   parent: app.stage,
+  // Providers are all OPTIONAL — omit them for effects without file
+  // assets, custom materials, or sub-emitters (both are defined below).
   textureProvider,
   materialGraphProvider,
   effectProvider,

@@ -13,15 +13,15 @@ Integrate the generated `out/vfx` artifact. Do not load authoring project files 
 2. Install only the selected optional peer:
 
    ```sh
-   npm install nixie-fx pixi.js
-   # or
    npm install nixie-fx three
+   # or
+   npm install nixie-fx pixi.js
    ```
 
-3. Read [export-bundles.md](references/export-bundles.md) and load the complete compiled bundle through `nixie-fx/export`.
+3. Read [export-bundles.md](references/export-bundles.md) and load the complete compiled bundle through `nixie-fx/export` (`loadVfxExportBundle`).
 4. Read exactly one backend guide unless the task requires both:
-   - PixiJS: [pixi.md](references/pixi.md)
-   - Three.js: [three.md](references/three.md)
+   - Three.js (canonical backend): [three.md](references/three.md)
+   - PixiJS (UI / 2D scenes): [pixi.md](references/pixi.md)
 5. Resolve textures, material graphs, meshes, and sub-effects through injected providers owned by the host application.
 6. Create the renderer and effect instance, then update the renderer exactly once per host frame.
 7. Surface manifest support reports and runtime missing-resource statistics. Do not silently treat partial or missing behavior as complete.
@@ -39,6 +39,10 @@ Use only public entrypoints:
 - `nixie-fx/export/node` only for Node filesystem export tooling.
 
 Never deep-import `nixie-fx/src/**`, copy runtime source into the consumer, or import the unused renderer backend.
+
+## Other engines
+
+The export format is engine-neutral JSON with official runtimes for Three.js and PixiJS. When a project targets another engine, do not force one of these adapters in: the shared simulation (`src/engine/particles.ts` in the repository) is renderer-agnostic, and the Three adapter source is compact enough to serve as a reference implementation for a port.
 
 ## Runtime rules
 

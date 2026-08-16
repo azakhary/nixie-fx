@@ -12,11 +12,16 @@ import {
   type ThreeVfxMeshProvider,
   type ThreeVfxTextureProvider,
 } from "nixie-fx/three";
+import type { ShaderGraph } from "nixie-fx/materials";
 ```
 
-## Providers
+## Providers (all optional)
 
-Preload exported textures before spawning effects and make `getTexture` synchronous. Resolve mesh references to prepared `BufferGeometry`; raw FBX or other authoring formats are not runtime inputs. Load exported `.material` JSON into a graph registry and resolve it by shader ID.
+Every provider is OPTIONAL: an effect that references no file assets — for example the CLI default, whose billboards use the built-in procedural shape — renders with `new ThreeVfxRenderer({ scene, camera })` and nothing else. Add a provider only when the effect's manifest assets need it:
+
+- `textureProvider` when effects reference texture files. Preload before spawning; `getTexture` must be synchronous.
+- `meshProvider` when mesh-mode emitters reference prepared mesh assets. Resolve to `BufferGeometry`; raw FBX or other authoring formats are not runtime inputs.
+- `materialGraphProvider` when emitters use non-default materials. Parse exported `.material` JSON into `ShaderGraph` objects keyed by graph ID and return them by shader ID.
 
 ```ts
 const textureProvider: ThreeVfxTextureProvider = {
@@ -33,6 +38,11 @@ const meshProvider: ThreeVfxMeshProvider = {
     return geometryCache.get(ref.path) ?? null;
   },
 };
+
+// Parsed .material JSON from the bundle, keyed by graph id.
+const materialGraphs = new Map<string, ShaderGraph>();
+const materialGraphProvider = (shaderId: string) =>
+  materialGraphs.get(shaderId);
 ```
 
 ## Mount and update
@@ -48,6 +58,7 @@ await textureProvider.preload?.(
 const vfx = new ThreeVfxRenderer({
   scene,
   camera,
+  // The complete provider form; each is optional (see Providers above).
   textureProvider,
   meshProvider,
   materialGraphProvider,

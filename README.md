@@ -57,35 +57,58 @@ read-only, while `export` writes the project's configured `out/vfx` bundle.
 
 ## Runtime integration
 
-Load the exported `manifest.json` and effect JSON files with
-`loadVfxExportBundle`, provide host-owned texture/material/mesh resources, then
-create an effect with the selected renderer. Advance the renderer exactly once
-per host frame, using seconds:
+Three.js is the canonical backend. Load the exported `manifest.json` and
+effect JSON files with `loadVfxExportBundle`, create effects with
+`ThreeVfxRenderer`, and advance the renderer exactly once per host frame,
+using seconds:
 
 ```ts
-const runtime = new PixiVfxRenderer({
-  parent: app.stage,
-  textureProvider,
-});
+import { loadVfxExportBundle } from "nixie-fx/export";
+import { ThreeVfxRenderer } from "nixie-fx/three";
 
-runtime.createEffect(effect, { seed: 0xdecafbad });
+const bundle = loadVfxExportBundle(
+  { manifest, effectsByPath },
+  { requiredBackend: "three3d" },
+);
+const effect = bundle.effectsById.get("world-impact");
+if (!effect) throw new Error("Missing world-impact effect");
 
-app.ticker.add((ticker) => {
-  runtime.update(ticker.deltaMS / 1000);
+// Providers are the complete form and every one of them is OPTIONAL:
+// effects without file assets need none of them.
+const vfx = new ThreeVfxRenderer({
+  scene,
+  camera,
+  textureProvider, // exported texture paths -> THREE.Texture (preload first)
+  meshProvider, // prepared mesh refs -> BufferGeometry
+  materialGraphProvider, // .material graph ids -> ShaderGraph
 });
+const instance = vfx.createEffect(effect, { position: [0, 0, 0], seed: 42 });
+
+// Once per host frame:
+vfx.update(deltaSeconds);
 
 // When the owning scene is released:
-runtime.destroy();
-textureProvider.release?.();
+vfx.destroy();
 ```
 
-The Three.js adapter follows the same lifecycle: construct with a camera and
-scene or parent, call `update(deltaSeconds)` once per frame, and call
-`destroy()` on teardown.
+The PixiJS adapter follows the same lifecycle for UI and 2D scenes:
+construct `PixiVfxRenderer` with a parent container (plus the same optional
+providers), call `update(deltaSeconds)` once per frame, and call `destroy()`
+on teardown.
 
 Always inspect the exported backend support report. A blocked effect must not
 be silently treated as supported, and a partial effect can contain deliberate
 backend approximations.
+
+## Other engines
+
+The export format is engine-neutral JSON: `manifest.json` plus per-effect
+files describing emitters, modules, and asset references — no renderer types
+anywhere. Official runtimes exist for Three.js and PixiJS. For another
+engine, the deterministic simulation (`src/engine/particles.ts`) is shared
+and renderer-agnostic, and the Three adapter (`src/runtime/three/`) is
+compact enough to serve as a reference implementation for a port — including
+one written with the help of an AI assistant.
 
 ## Agent skills
 
