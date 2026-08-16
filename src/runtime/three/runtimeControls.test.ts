@@ -11,8 +11,10 @@ import { describe, expect, it } from "vitest";
 import {
   PARTICLE_INSTANCE_STRIDE,
   ParticleEmitterRuntimeState,
+  createDefaultParticleEffect,
   normalizeParticleEffect,
 } from "../../engine/particles";
+import { getProceduralBillboardTexture } from "./proceduralBillboardTexture";
 import { ThreeVfxRenderer, updateInstancedParticleOrder } from "./renderer";
 
 function camera(): PerspectiveCamera {
@@ -119,7 +121,8 @@ describe("Three runtime controls and retained billboard path", () => {
   it("keeps unsupported billboard variants on the legacy per-particle path", () => {
     const renderer = rendererFor(new Texture());
     const effect = compatibleEffect({ count: 2 });
-    effect.emitters[0]!.render.sortMode = "distanceFarFirst";
+    // Derived-opacity emitters stay legacy; sort modes no longer demote (F13).
+    effect.emitters[0]!.render.opacityInvert = true;
     const instance = renderer.createEffect(effect);
     renderer.update(1 / 60);
 
@@ -134,6 +137,114 @@ describe("Three runtime controls and retained billboard path", () => {
       instancedDrawCalls: 0,
       legacyParticleDrawCalls: 2,
     });
+  });
+
+  it("keeps the one-draw instanced path for every sort mode (F13)", () => {
+    for (const sortMode of [
+      "none",
+      "oldestFirst",
+      "youngestFirst",
+      "distanceFarFirst",
+      "distanceNearFirst",
+    ] as const) {
+      const renderer = rendererFor(new Texture(), false);
+      const effect = compatibleEffect({ count: 5 });
+      effect.emitters[0]!.render.sortMode = sortMode;
+      const instance = renderer.createEffect(effect);
+      renderer.update(1 / 60);
+
+      expect(
+        instance.root.children[0],
+        `${sortMode} should stay instanced`,
+      ).toBeInstanceOf(InstancedMesh);
+      expect(instance.stats).toMatchObject({
+        drawCalls: 1,
+        instancedDrawCalls: 1,
+        legacyParticleDrawCalls: 0,
+      });
+    }
+  });
+
+  it("renders the default CLI effect (textureless billboard, distanceFarFirst) in one instanced draw", () => {
+    // The `nixie-fx effect create` defaults: render.texture null,
+    // sortMode "distanceFarFirst", blend alpha, unlit billboards. F12 gives
+    // the emitter a procedural shape texture and F13 keeps it instanced.
+    const renderer = new ThreeVfxRenderer({
+      scene: new Scene(),
+      camera: camera(),
+    });
+    const effect = normalizeParticleEffect({
+      ...createDefaultParticleEffect("cli-default", "CLI Default"),
+      targetProfile: "three-world-3d",
+    });
+    expect(effect.emitters[0]!.render.texture).toBeNull();
+    expect(effect.emitters[0]!.render.sortMode).toBe("distanceFarFirst");
+
+    const instance = renderer.createEffect(effect);
+    for (let i = 0; i < 30; i++) renderer.update(1 / 60);
+
+    expect(instance.stats.visibleParticles).toBeGreaterThan(0);
+    expect(instance.stats.instancedDrawCalls).toBeGreaterThanOrEqual(1);
+    expect(instance.stats.legacyParticleDrawCalls).toBe(0);
+    const mesh = instance.root.children.find(
+      (child) => child instanceof InstancedMesh,
+    ) as InstancedMesh;
+    expect(mesh).toBeInstanceOf(InstancedMesh);
+    const material = mesh.material as { uniforms?: Record<string, unknown> };
+    expect(
+      (material.uniforms?.uTexture as { value: unknown } | undefined)?.value,
+    ).toBe(
+      getProceduralBillboardTexture(
+        effect.emitters[0]!.billboard.shape,
+        effect.emitters[0]!.billboard.softness,
+      ),
+    );
+  });
+
+  it("writes distance-sorted instances far-to-near for distanceFarFirst", () => {
+    // Three staggered bursts moving +z toward the camera (at z=10): older
+    // particles sit closer to the camera. distanceFarFirst must write the
+    // youngest (farthest) instance first.
+    const makeEffect = (sortMode: "distanceFarFirst" | "distanceNearFirst") => {
+      const effect = compatibleEffect({
+        count: 1,
+        velocity: [0, 0, 1],
+        lifetime: 3,
+      });
+      effect.emitters[0]!.render.sortMode = sortMode;
+      effect.emitters[0]!.spawn.bursts = [
+        { time: 0, count: 1, cycles: 1, interval: 0, probability: 1 },
+        { time: 0.2, count: 1, cycles: 1, interval: 0, probability: 1 },
+        { time: 0.4, count: 1, cycles: 1, interval: 0, probability: 1 },
+      ];
+      return effect;
+    };
+    const instanceZ = (mesh: InstancedMesh, index: number): number => {
+      const matrix = new Matrix4();
+      mesh.getMatrixAt(index, matrix);
+      return new Vector3().setFromMatrixPosition(matrix).z;
+    };
+
+    const farFirstRenderer = rendererFor(new Texture(), false);
+    const farFirst = farFirstRenderer.createEffect(
+      makeEffect("distanceFarFirst"),
+    );
+    for (let i = 0; i < 36; i++) farFirstRenderer.update(1 / 60);
+    const farMesh = farFirst.root.children[0] as InstancedMesh;
+    expect(farMesh.count).toBe(3);
+    // Far-to-near: z (distance to the camera at z=10) increases per instance.
+    expect(instanceZ(farMesh, 0)).toBeLessThan(instanceZ(farMesh, 1));
+    expect(instanceZ(farMesh, 1)).toBeLessThan(instanceZ(farMesh, 2));
+
+    const nearFirstRenderer = rendererFor(new Texture(), false);
+    const nearFirst = nearFirstRenderer.createEffect(
+      makeEffect("distanceNearFirst"),
+    );
+    for (let i = 0; i < 36; i++) nearFirstRenderer.update(1 / 60);
+    const nearMesh = nearFirst.root.children[0] as InstancedMesh;
+    expect(nearMesh.count).toBe(3);
+    expect(instanceZ(nearMesh, 0)).toBeGreaterThan(instanceZ(nearMesh, 1));
+    expect(instanceZ(nearMesh, 1)).toBeGreaterThan(instanceZ(nearMesh, 2));
   });
 
   it("applies position, rotation, and scale around the effect anchor", () => {
@@ -217,5 +328,20 @@ describe("Three runtime controls and retained billboard path", () => {
     const order = new Uint32Array(3);
     updateInstancedParticleOrder(state, "oldestFirst", order);
     expect(Array.from(order.slice(0, 2))).toEqual([1, 0]);
+  });
+
+  it("orders youngestFirst instances by descending spawn time", () => {
+    const state = new ParticleEmitterRuntimeState(3);
+    state.activeCount = 3;
+    state.instanceData[3] = 0.05;
+    state.instanceData[7] = 1;
+    state.instanceData[PARTICLE_INSTANCE_STRIDE + 3] = 0.2;
+    state.instanceData[PARTICLE_INSTANCE_STRIDE + 7] = 1;
+    state.instanceData[PARTICLE_INSTANCE_STRIDE * 2 + 3] = 0.1;
+    state.instanceData[PARTICLE_INSTANCE_STRIDE * 2 + 7] = 1;
+
+    const order = new Uint32Array(3);
+    updateInstancedParticleOrder(state, "youngestFirst", order);
+    expect(Array.from(order)).toEqual([1, 2, 0]);
   });
 });

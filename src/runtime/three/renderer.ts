@@ -72,6 +72,7 @@ import {
 } from "../schema/materials";
 import {
   createThreeEmitterMaterial,
+  emitterProceduralBillboardKey,
   emitterTexturePath,
   isThreeParticleMaterial,
   threeBlendingForEffectiveBlend,
@@ -757,6 +758,8 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
 
     let visibleCount = 0;
     let bloomSourceCount = 0;
+    let instancedDistanceSquaredSum = 0;
+    let instancedStartSum = 0;
     if (view.instanced) {
       updateInstancedParticleOrder(
         state,
@@ -778,7 +781,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       );
       if (!sample?.visible) continue;
       if (view.instanced) {
-        this.applySampleToInstanced(
+        const distanceSquared = this.applySampleToInstanced(
           view.instanced,
           sample,
           view,
@@ -787,6 +790,8 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
           particleIndex,
           visibleCount,
         );
+        instancedDistanceSquaredSum += distanceSquared;
+        instancedStartSum += sample.start;
       } else {
         const mesh = this.acquireMesh(view, visibleCount);
         this.applySampleToMesh(
@@ -806,9 +811,27 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       }
     }
     hideViewMeshes(view, visibleCount);
+    if (view.instanced && visibleCount > 1) {
+      // Distance sort modes re-order the written instances against the camera
+      // so blending inside the single instanced draw resolves correctly (F13).
+      if (emitter.render.sortMode === "distanceFarFirst") {
+        view.instanced.sortByCameraDistance(visibleCount, true);
+      } else if (emitter.render.sortMode === "distanceNearFirst") {
+        view.instanced.sortByCameraDistance(visibleCount, false);
+      }
+    }
     view.instanced?.commit(visibleCount);
+    // The instanced mesh is one object, so the legacy per-mesh render-order
+    // banding applies at emitter granularity via representative (mean)
+    // distance/age. Intra-emitter ordering is the instance write order above.
     view.instanced?.setRenderOrder(
-      this.renderOrder + (this.emitterLayerRanks[emitterIndex] ?? emitterIndex),
+      renderOrderForParticleSortMode(
+        this.renderOrder +
+          (this.emitterLayerRanks[emitterIndex] ?? emitterIndex),
+        emitter.render.sortMode,
+        visibleCount > 0 ? instancedDistanceSquaredSum / visibleCount : 0,
+        visibleCount > 0 ? instancedStartSum / visibleCount : 0,
+      ),
     );
     let trailDrawCalls = 0;
     if (emitter.modules.trails) {
@@ -1270,6 +1293,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     mesh.visible = true;
   }
 
+  /** Returns the particle's squared world distance to the camera. */
   private applySampleToInstanced(
     instanced: ThreeInstancedBillboardView,
     sample: ParticleSample,
@@ -1278,7 +1302,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     emitterIndex: number,
     particleIndex: number,
     visibleIndex: number,
-  ): void {
+  ): number {
     const matrix = this.writeSampleMatrix(
       sample,
       view,
@@ -1286,7 +1310,18 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       emitterIndex,
       particleIndex,
     );
-    instanced.write(visibleIndex, matrix, sample.color, sample.alpha);
+    const dx = sample.position[0] - this.camera.position.x;
+    const dy = sample.position[1] - this.camera.position.y;
+    const dz = sample.position[2] - this.camera.position.z;
+    const distanceSquared = dx * dx + dy * dy + dz * dz;
+    instanced.write(
+      visibleIndex,
+      matrix,
+      sample.color,
+      sample.alpha,
+      distanceSquared,
+    );
+    return distanceSquared;
   }
 
   private writeSampleMatrix(
@@ -2198,7 +2233,7 @@ function emitterStaticViewKey(
     hostMaterial ? `hostmat:${hostMaterial.uuid}` : "",
     Number(emitter.mesh.flipWinding),
     Number(emitter.mesh.recomputeNormals),
-    emitterTexturePath(emitter) ?? "",
+    emitterTexturePath(emitter) ?? emitterProceduralBillboardKey(emitter) ?? "",
     emitter.render.material?.shaderId ?? "",
     materialGraph?.side ?? "double",
     materialGraph?.blend ?? "normal",
@@ -2235,7 +2270,14 @@ export function updateInstancedParticleOrder(
 ): void {
   const count = Math.min(state.activeCount, out.length);
   for (let i = 0; i < count; i++) out[i] = i;
-  if (sortMode !== "oldestFirst") return;
+  if (sortMode !== "oldestFirst" && sortMode !== "youngestFirst") return;
+  // Age sorts pre-order the write order by spawn time; distance sorts are
+  // handled after sampling (ThreeInstancedBillboardView.sortByCameraDistance)
+  // because particle positions are only known once each sample is evaluated.
+  const drawLaterThan =
+    sortMode === "oldestFirst"
+      ? (previousStart: number, start: number) => previousStart > start
+      : (previousStart: number, start: number) => previousStart < start;
   const data = state.instanceData;
   for (let i = 1; i < count; i++) {
     const index = out[i] ?? i;
@@ -2245,7 +2287,7 @@ export function updateInstancedParticleOrder(
       const previousIndex = out[insertAt - 1] ?? insertAt - 1;
       const previousStart =
         data[previousIndex * PARTICLE_INSTANCE_STRIDE + 3] ?? 0;
-      if (previousStart <= start) break;
+      if (!drawLaterThan(previousStart, start)) break;
       out[insertAt] = previousIndex;
       insertAt -= 1;
     }

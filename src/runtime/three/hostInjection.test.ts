@@ -1,5 +1,6 @@
 import {
   BoxGeometry,
+  InstancedMesh,
   Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
@@ -106,6 +107,35 @@ function firstParticleBasicMaterial(instance: {
     }
   }
   throw new Error("Expected a visible particle mesh with a basic material.");
+}
+
+/**
+ * Rendered color+alpha of the first particle. Textureless unlit billboards
+ * ride the instanced fast path (F13), so this reads the per-instance color
+ * attributes of the retained InstancedMesh.
+ */
+function firstRenderedParticleColor(instance: {
+  root: { children: unknown[] };
+}): { r: number; g: number; b: number; alpha: number } {
+  for (const child of instance.root.children) {
+    if (child instanceof InstancedMesh && child.visible) {
+      const colors = child.geometry.getAttribute("aInstanceColor");
+      const alphas = child.geometry.getAttribute("aInstanceAlpha");
+      return {
+        r: colors.getX(0),
+        g: colors.getY(0),
+        b: colors.getZ(0),
+        alpha: alphas.getX(0),
+      };
+    }
+  }
+  const material = firstParticleBasicMaterial(instance);
+  return {
+    r: material.color.r,
+    g: material.color.g,
+    b: material.color.b,
+    alpha: material.opacity,
+  };
 }
 
 describe("per-emitter runtime parameters (engine)", () => {
@@ -293,9 +323,9 @@ describe("per-emitter draw parameters (three)", () => {
     );
     instance.emitBurst("embers", { count: 1 });
     renderer.update(1 / 60);
-    const authored = firstParticleBasicMaterial(instance);
-    expect(authored.color.r).toBeGreaterThan(0.9);
-    expect(authored.color.g).toBeLessThan(0.05);
+    const authored = firstRenderedParticleColor(instance);
+    expect(authored.r).toBeGreaterThan(0.9);
+    expect(authored.g).toBeLessThan(0.05);
 
     instance.setEmitterRuntimeParameters("embers", {
       colorOverLifetimeGradient: {
@@ -311,18 +341,18 @@ describe("per-emitter draw parameters (three)", () => {
       },
     });
     renderer.update(1 / 60);
-    const overridden = firstParticleBasicMaterial(instance);
-    expect(overridden.color.g).toBeGreaterThan(0.9);
-    expect(overridden.color.r).toBeLessThan(0.05);
-    expect(overridden.opacity).toBeCloseTo(0.5, 4);
+    const overridden = firstRenderedParticleColor(instance);
+    expect(overridden.g).toBeGreaterThan(0.9);
+    expect(overridden.r).toBeLessThan(0.05);
+    expect(overridden.alpha).toBeCloseTo(0.5, 4);
 
     instance.setEmitterRuntimeParameters("embers", {
       colorOverLifetimeGradient: null,
     });
     renderer.update(1 / 60);
-    const restored = firstParticleBasicMaterial(instance);
-    expect(restored.color.r).toBeGreaterThan(0.9);
-    expect(restored.color.g).toBeLessThan(0.05);
+    const restored = firstRenderedParticleColor(instance);
+    expect(restored.r).toBeGreaterThan(0.9);
+    expect(restored.g).toBeLessThan(0.05);
   });
 
   it("colorOverLifetimeGradient applies even when the color module is authored off", () => {
@@ -356,9 +386,9 @@ describe("per-emitter draw parameters (three)", () => {
     });
     instance.emitBurst("embers", { count: 1 });
     renderer.update(1 / 60);
-    const material = firstParticleBasicMaterial(instance);
-    expect(material.color.b).toBeGreaterThan(0.9);
-    expect(material.color.r).toBeLessThan(0.05);
+    const color = firstRenderedParticleColor(instance);
+    expect(color.b).toBeGreaterThan(0.9);
+    expect(color.r).toBeLessThan(0.05);
   });
 });
 

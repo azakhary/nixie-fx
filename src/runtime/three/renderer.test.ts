@@ -6,6 +6,7 @@ import {
   Euler,
   Float32BufferAttribute,
   FrontSide,
+  InstancedMesh,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -390,28 +391,38 @@ describe("ThreeVfxRenderer transform MVP", () => {
   });
 
   it("keeps opaque alpha particles writing depth while disabling translucent and additive writes", () => {
-    const sample = (blend: "alpha" | "additive", alpha = 1) => {
+    // Unlit textureless billboards ride the instanced fast path (F13); the
+    // per-sample I12-A gate applies there at batch granularity via the
+    // committed instance alphas. The `lit` variants pin the legacy
+    // per-particle mesh path so its per-sample gate stays covered too.
+    const sample = (
+      blend: "alpha" | "additive",
+      alpha = 1,
+      shading: "unlit" | "lit" = "unlit",
+    ) => {
       const renderer = new ThreeVfxRenderer({
         scene: new Scene(),
         camera: createCamera(),
       });
       const instance = renderer.createEffect(
         normalizeParticleEffect({
-          id: `depth-${blend}`,
+          id: `depth-${blend}-${shading}`,
           targetProfile: "three-world-3d",
           emitters: [
             {
               id: blend,
               ...singleBurstEmitter({ color: [1, 1, 1, alpha] }),
               modules: { color: false },
-              render: { blend, depthWrite: true },
+              render: { blend, depthWrite: true, shading },
             },
           ],
         }),
       );
 
       renderer.update(1 / 60);
-      return firstParticleMaterial(instance);
+      return shading === "unlit"
+        ? (firstInstancedBillboard(instance).material as ShaderMaterial)
+        : firstParticleMaterial(instance);
     };
 
     const opaqueAlpha = sample("alpha");
@@ -425,6 +436,17 @@ describe("ThreeVfxRenderer transform MVP", () => {
     const additive = sample("additive");
     expect(additive.depthWrite).toBe(false);
     expect(additive.blending).toBe(AdditiveBlending);
+
+    const legacyOpaque = sample("alpha", 1, "lit");
+    expect(legacyOpaque.depthWrite).toBe(true);
+    expect(legacyOpaque.blending).toBe(NormalBlending);
+
+    const legacyTranslucent = sample("alpha", 0.5, "lit");
+    expect(legacyTranslucent.depthWrite).toBe(false);
+
+    const legacyAdditive = sample("additive", 1, "lit");
+    expect(legacyAdditive.depthWrite).toBe(false);
+    expect(legacyAdditive.blending).toBe(AdditiveBlending);
   });
 
   it("renders a premultiplied emitter as a transparent, non-depth-writing normal-blended pass (I13-A)", () => {
@@ -1363,12 +1385,14 @@ describe("ThreeVfxRenderer transform MVP", () => {
 
     renderer.update(1 / 60);
     expect(instance.stats.bloomSourceParticles).toBe(1);
-    expect(materialPeak(firstParticleMaterial(instance))).toBeGreaterThan(1);
-
-    renderer.setPreviewBloomOptions({ enabled: false });
-    expect(materialPeak(firstParticleMaterial(instance))).toBeLessThanOrEqual(
+    expect(instancedColorPeak(firstInstancedBillboard(instance))).toBeGreaterThan(
       1,
     );
+
+    renderer.setPreviewBloomOptions({ enabled: false });
+    expect(
+      instancedColorPeak(firstInstancedBillboard(instance)),
+    ).toBeLessThanOrEqual(1);
   });
 
   it("does not crush LDR particle colors to white under default preview bloom", () => {
@@ -1409,20 +1433,11 @@ describe("ThreeVfxRenderer transform MVP", () => {
     );
 
     renderer.update(1 / 60);
-    const [nearWhiteMesh, midGrayMesh, darkGrayMesh] = particleMeshes(
-      instance,
-    ).filter(
-      (
-        mesh,
-      ): mesh is Mesh & {
-        material: MeshBasicMaterial | MeshStandardMaterial;
-      } =>
-        mesh.material instanceof MeshBasicMaterial ||
-        mesh.material instanceof MeshStandardMaterial,
-    );
-    const nearWhitePeak = materialPeak(nearWhiteMesh.material);
-    const midGrayPeak = materialPeak(midGrayMesh.material);
-    const darkGrayPeak = materialPeak(darkGrayMesh.material);
+    const [nearWhiteMesh, midGrayMesh, darkGrayMesh] =
+      instancedBillboards(instance);
+    const nearWhitePeak = instancedColorPeak(nearWhiteMesh!);
+    const midGrayPeak = instancedColorPeak(midGrayMesh!);
+    const darkGrayPeak = instancedColorPeak(darkGrayMesh!);
 
     // The bug renormalized every peak >= threshold-knee (0.5 at defaults) up
     // to ~1.0, so mid-gray and near-white both read as white.
@@ -1728,11 +1743,11 @@ describe("ThreeVfxRenderer transform MVP", () => {
     );
 
     renderer.update(1 / 60);
-    const rendered = firstParticleMaterial(instance);
+    const rendered = instancedParticleColor(firstInstancedBillboard(instance));
 
-    expect(rendered.color.r).toBeCloseTo(srgbToLinear(0.5), 5);
-    expect(rendered.color.g).toBeCloseTo(0, 5);
-    expect(rendered.color.b).toBeCloseTo(0, 5);
+    expect(rendered.r).toBeCloseTo(srgbToLinear(0.5), 5);
+    expect(rendered.g).toBeCloseTo(0, 5);
+    expect(rendered.b).toBeCloseTo(0, 5);
   });
 
   it("renders camera-facing history trails in Three with length 0 lifetime semantics", () => {
@@ -2090,8 +2105,10 @@ describe("ThreeVfxRenderer transform MVP", () => {
     );
 
     fixedRenderer.update(1 / 60);
-    const fixedMaterial = firstParticleMaterial(fixedInstance);
-    expect(fixedMaterial.color.r).toBeCloseTo(srgbToLinear(encodedMid), 5);
+    const fixedColor = instancedParticleColor(
+      firstInstancedBillboard(fixedInstance),
+    );
+    expect(fixedColor.r).toBeCloseTo(srgbToLinear(encodedMid), 5);
   });
 
   it("gates emitter color and alpha for Tier-2 Three materials without Particle Color", () => {
@@ -2383,10 +2400,39 @@ function upFromMatrix(values: number[]): Vector3 {
     .normalize();
 }
 
-function materialPeak(
-  material: MeshBasicMaterial | MeshStandardMaterial,
-): number {
-  return Math.max(material.color.r, material.color.g, material.color.b);
+function instancedBillboards(instance: {
+  root: { children: unknown[] };
+}): InstancedMesh[] {
+  return instance.root.children.filter(
+    (child): child is InstancedMesh => child instanceof InstancedMesh,
+  );
+}
+
+function firstInstancedBillboard(instance: {
+  root: { children: unknown[] };
+}): InstancedMesh {
+  const mesh = instancedBillboards(instance)[0];
+  if (!mesh) throw new Error("Expected an instanced billboard mesh.");
+  return mesh;
+}
+
+function instancedParticleColor(
+  mesh: InstancedMesh,
+  index = 0,
+): { r: number; g: number; b: number; alpha: number } {
+  const colors = mesh.geometry.getAttribute("aInstanceColor");
+  const alphas = mesh.geometry.getAttribute("aInstanceAlpha");
+  return {
+    r: colors.getX(index),
+    g: colors.getY(index),
+    b: colors.getZ(index),
+    alpha: alphas.getX(index),
+  };
+}
+
+function instancedColorPeak(mesh: InstancedMesh, index = 0): number {
+  const color = instancedParticleColor(mesh, index);
+  return Math.max(color.r, color.g, color.b);
 }
 
 function triangleGeometry(): BufferGeometry {
