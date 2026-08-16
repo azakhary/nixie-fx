@@ -1,15 +1,23 @@
 {
   "name": "nixie-fx",
-  "version": "0.1.2",
-  "description": "Portable particle and VFX runtimes for PixiJS and Three.js",
+  "version": "0.1.3",
+  "description": "Open-source particle and VFX runtime and CLI for PixiJS and Three.js web games",
   "keywords": [
     "particles",
+    "particle-editor",
+    "particle-system",
     "vfx",
+    "visual-effects",
+    "html5",
+    "web-game",
+    "webgl",
     "pixi.js",
+    "pixijs",
     "three.js",
+    "threejs",
     "game-development"
   ],
-  "homepage": "https://github.com/azakhary/nixie-fx#readme",
+  "homepage": "https://nixiefx.com/",
   "bugs": {
     "url": "https://github.com/azakhary/nixie-fx/issues"
   },

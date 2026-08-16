@@ -4,6 +4,12 @@ NixieFX is the open-source runtime for particle effects authored with the
 [NixieFX editor](https://nixiefx.com/editor/). It provides one shared,
 deterministic simulation with renderer adapters for PixiJS and Three.js.
 
+[Website](https://nixiefx.com/) ·
+[Quick start](https://nixiefx.com/quick-start/) ·
+[Documentation](https://nixiefx.com/docs/) ·
+[Agent skills](https://nixiefx.com/skills/) ·
+[npm](https://www.npmjs.com/package/nixie-fx)
+
 The editor project and the exported game bundle are intentionally different:
 games consume the generated `out/vfx` directory, not the editable `.prj`
 workspace.
