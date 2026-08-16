@@ -276,6 +276,13 @@ function createExportSupport(
       .map((blocker) => blocker.path),
     partialModules,
     warnings: warnings.map((warning) => warning.message),
+    ...(validation.infos.length > 0
+      ? {
+          notes: validation.infos.map((info) =>
+            info.backend ? `[${info.backend}] ${info.message}` : info.message,
+          ),
+        }
+      : {}),
   };
 }
 

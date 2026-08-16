@@ -37,6 +37,12 @@ export interface VfxBackendSupportReport {
   status: VfxSupportStatus;
   warnings: VfxSupportDiagnostic[];
   blockers: VfxSupportDiagnostic[];
+  /**
+   * Backend-semantics notes (F4): informational documentation of how this
+   * backend renders authored settings. Never feeds `status`. Omitted when
+   * empty so clean manifests stay byte-stable.
+   */
+  notes?: VfxSupportDiagnostic[];
 }
 
 export type VfxBackendSupportReports = Record<

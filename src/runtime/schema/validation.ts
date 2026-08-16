@@ -3,6 +3,7 @@ import {
   normalizeParticleEffect,
   type ParticleEffectDefinition,
   type ParticleEmitterDefinition,
+  type VfxTargetProfile,
 } from "../../engine/particles";
 import {
   PARTICLE_EMITTER_MODULE_KEYS,
@@ -16,7 +17,12 @@ import {
 import { normalizeShaderGraph, type ShaderGraph } from "./materials";
 import type { MaterialInstance } from "../../engine/materialInstance";
 
-export type VfxValidationSeverity = "error" | "warning";
+export type VfxValidationSeverity = "error" | "warning" | "info";
+
+/** Backend a diagnostic's semantics apply to; issues without a scope apply
+ *  to every backend. Mirrors `VfxBackendId` (kept literal to avoid a
+ *  validation → backends dependency). */
+export type VfxValidationBackendScope = "pixi2d" | "three3d";
 
 export type VfxValidationIssueCode =
   | "bad-kind"
@@ -39,6 +45,12 @@ export interface VfxValidationIssue {
   code: VfxValidationIssueCode;
   path: string;
   message: string;
+  /**
+   * When set, this issue documents that backend's semantics. Warnings scoped
+   * to a backend OUTSIDE the effect's target profile are demoted to `infos`
+   * (F4): they never gate the target's validation status.
+   */
+  backend?: VfxValidationBackendScope;
 }
 
 export interface VfxExportBlocker {
@@ -51,6 +63,12 @@ export interface VfxValidationResult {
   valid: boolean;
   errors: VfxValidationIssue[];
   warnings: VfxValidationIssue[];
+  /**
+   * Informational backend-semantics notes (F4): intrinsically-informational
+   * diagnostics plus warnings scoped to a backend outside the effect's
+   * target profile. Never gate `valid`, warning counts, or support status.
+   */
+  infos: VfxValidationIssue[];
   blockers: VfxExportBlocker[];
 }
 
@@ -189,7 +207,38 @@ export function validateVfxAuthoringEffect(
   validateEmitters(rawEmitters, normalized, options, collector);
   validateMaterialVariantCap(rawEmitters, options, collector);
 
-  return createVfxValidationResult(collector.issues, collector.blockers);
+  return createVfxValidationResult(
+    scopeIssuesToTargetProfile(collector.issues, normalized.targetProfile),
+    collector.blockers,
+  );
+}
+
+/**
+ * The backends an effect's target profile ships to: warnings scoped to any
+ * other backend are semantics notes, not problems with the target (F4).
+ * `portable` targets both backends, so every scoped warning applies.
+ */
+export function backendsForVfxTargetProfile(
+  profile: VfxTargetProfile,
+): readonly VfxValidationBackendScope[] {
+  if (profile === "pixi-ui-2d") return ["pixi2d"];
+  if (profile === "three-world-3d") return ["three3d"];
+  return ["pixi2d", "three3d"];
+}
+
+/** Demote backend-scoped warnings outside the target profile to info (F4). */
+function scopeIssuesToTargetProfile(
+  issues: readonly VfxValidationIssue[],
+  profile: VfxTargetProfile,
+): VfxValidationIssue[] {
+  const targetBackends = new Set(backendsForVfxTargetProfile(profile));
+  return issues.map((issue) =>
+    issue.severity === "warning" &&
+    issue.backend &&
+    !targetBackends.has(issue.backend)
+      ? { ...issue, severity: "info" }
+      : issue,
+  );
 }
 
 export function createVfxValidationResult(
@@ -198,10 +247,12 @@ export function createVfxValidationResult(
 ): VfxValidationResult {
   const errors = issues.filter((issue) => issue.severity === "error");
   const warnings = issues.filter((issue) => issue.severity === "warning");
+  const infos = issues.filter((issue) => issue.severity === "info");
   return {
     valid: errors.length === 0 && blockers.length === 0,
     errors,
     warnings,
+    infos,
     blockers: [...blockers],
   };
 }
@@ -212,7 +263,8 @@ export function mergeVfxValidationResults(
   const issues: VfxValidationIssue[] = [];
   const blockers: VfxExportBlocker[] = [];
   for (const result of results) {
-    issues.push(...result.errors, ...result.warnings);
+    // `infos ?? []` tolerates hand-built results from before infos existed.
+    issues.push(...result.errors, ...result.warnings, ...(result.infos ?? []));
     blockers.push(...result.blockers);
   }
   return createVfxValidationResult(issues, blockers);
@@ -332,6 +384,7 @@ function validateMeshRef(
       "invalid-asset-ref",
       `emitters.${emitterIndex}.mesh.asset`,
       "Three mesh particles need a prepared mesh asset reference before export.",
+      "three3d",
     );
     return;
   }
@@ -404,6 +457,7 @@ function validateCoreRuntimeSupport(
       "unsupported-module",
       `${path}.mode`,
       "Mesh mode exports as Pixi 2D shard geometry semantics, not true 3D mesh rendering.",
+      "pixi2d",
     );
   }
 
@@ -457,12 +511,16 @@ function validateDepthRenderFlags(
 
   for (const key of ["depthTest", "depthWrite", "depthInk"] as const) {
     if (render[key] !== true) continue;
+    // Backend-semantics documentation, not a defect: Pixi implements these
+    // flags with its designed 2.5D draw-order/ink model, and Three uses the
+    // real GPU depth buffer — so this never gates any profile's status (F4).
     addIssue(
       collector,
-      "warning",
+      "info",
       "unsupported-module",
       `${path}.render.${key}`,
       `${key} exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.`,
+      "pixi2d",
     );
   }
 }
@@ -1021,8 +1079,15 @@ function addIssue(
   code: VfxValidationIssueCode,
   path: string,
   message: string,
+  backend?: VfxValidationBackendScope,
 ): void {
-  collector.issues.push({ severity, code, path, message });
+  collector.issues.push({
+    severity,
+    code,
+    path,
+    message,
+    ...(backend ? { backend } : {}),
+  });
 }
 
 function normalizeIdForComparison(value: unknown): string | null {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createDefaultParticleEffect } from "../engine/particles";
 import {
   compileVfxEffect,
   compileVfxExport,
@@ -271,6 +272,7 @@ describe("vfx export compiler", () => {
           "validation": {
             "blockers": [],
             "errors": [],
+            "infos": [],
             "valid": true,
             "warnings": [],
           },
@@ -493,6 +495,50 @@ describe("vfx export compiler", () => {
     expect(effect?.support.warnings.length).toBeGreaterThan(0);
     expect(compiled.manifest.effects[0]?.support.status).toBe("partial");
     expect(compiled.validation.valid).toBe(true);
+  });
+
+  it("exports a fresh effect as fully supported for every target profile (F4)", () => {
+    // Freshly created defaults must never open on yellow: non-target backend
+    // semantics notes are segregated into `notes` and do not gate status.
+    for (const targetProfile of [
+      "pixi-ui-2d",
+      "three-world-3d",
+      "portable",
+    ] as const) {
+      const created = createDefaultParticleEffect(
+        `fresh-${targetProfile}`,
+        "Fresh",
+      );
+      if (targetProfile === "portable") {
+        for (const emitter of created.emitters) {
+          emitter.render.depthTest = false;
+          emitter.render.depthWrite = false;
+          emitter.render.depthInk = false;
+        }
+      }
+      const compiled = compileVfxEffect({ ...created, targetProfile });
+      const support = compiled.effect.support;
+
+      expect(support.status, `${targetProfile} status`).toBe("supported");
+      expect(support.overall, `${targetProfile} overall`).toBe("supported");
+      expect(support.warnings, `${targetProfile} warnings`).toEqual([]);
+      expect(support.partialModules, `${targetProfile} partial`).toEqual([]);
+      expect(compiled.validation.warnings).toEqual([]);
+    }
+
+    // The three-world-3d default keeps its depth flags, so the Pixi 2.5D
+    // semantics surface as segregated informational notes.
+    const threeDefault = compileVfxEffect({
+      ...createDefaultParticleEffect("fresh-notes", "Fresh"),
+      targetProfile: "three-world-3d",
+    });
+    expect(threeDefault.effect.support.notes).toEqual(
+      expect.arrayContaining([expect.stringContaining("[pixi2d]")]),
+    );
+    expect(threeDefault.effect.support.backends.three3d.status).toBe(
+      "supported",
+    );
+    expect(threeDefault.effect.support.backends.three3d.warnings).toEqual([]);
   });
 
   it("reports authored settings that runtime export does not support yet", () => {

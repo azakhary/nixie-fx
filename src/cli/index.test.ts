@@ -115,6 +115,77 @@ describe("nixie-fx CLI", () => {
     });
   });
 
+  it("validates a fresh three-world-3d effect clean, with notes segregated (F4)", async () => {
+    const root = await createProject();
+    const output = captureOutput();
+
+    expect(
+      await runNixieFxCli(
+        [
+          "effect",
+          "create",
+          "--project",
+          root,
+          "--name",
+          "World Spark",
+          "--profile",
+          "three-world-3d",
+        ],
+        output.environment,
+      ),
+    ).toBe(0);
+    expect(await runNixieFxCli(["validate", root], output.environment)).toBe(0);
+
+    // Zero warnings: the depth-flag diagnostics are Pixi-backend semantics
+    // notes and must not gate a three-world-3d target (F4).
+    expect(last(output.stdout)).toBe(
+      "Validated 1 effect: 0 errors, 0 warnings.",
+    );
+    expect(output.stderr).toEqual([]);
+    expect(output.stdout.some((line) => line.startsWith("warning"))).toBe(
+      false,
+    );
+    const noteLines = output.stdout.filter((line) => line.startsWith("note"));
+    expect(noteLines.length).toBeGreaterThan(0);
+    expect(noteLines[0]).toContain("(pixi2d note)");
+
+    // Export mirrors the scoping: the target backend reads fully supported.
+    expect(await runNixieFxCli(["export", root], output.environment)).toBe(0);
+    const manifest = JSON.parse(
+      await readFile(join(root, "out/vfx/manifest.json"), "utf8"),
+    ) as {
+      effects?: Array<{
+        support?: {
+          status?: string;
+          warnings?: string[];
+          notes?: string[];
+          backends?: Record<string, { status?: string }>;
+        };
+      }>;
+    };
+    const support = manifest.effects?.[0]?.support;
+    expect(support?.status).toBe("supported");
+    expect(support?.warnings).toEqual([]);
+    expect(support?.notes?.length).toBeGreaterThan(0);
+    expect(support?.backends?.three3d?.status).toBe("supported");
+  });
+
+  it("validates a fresh default-profile effect clean (F4)", async () => {
+    const root = await createProject();
+    const output = captureOutput();
+
+    expect(
+      await runNixieFxCli(
+        ["effect", "create", "--project", root, "--name", "UI Spark"],
+        output.environment,
+      ),
+    ).toBe(0);
+    expect(await runNixieFxCli(["validate", root], output.environment)).toBe(0);
+    expect(last(output.stdout)).toBe(
+      "Validated 1 effect: 0 errors, 0 warnings.",
+    );
+  });
+
   it("validates recognized authoring effects without writing output", async () => {
     const root = await createProject();
     await writeJson(

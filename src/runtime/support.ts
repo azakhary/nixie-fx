@@ -26,7 +26,10 @@ export function collectPixiBackendSupport(
   effect: ParticleEffectDefinition,
   validation?: VfxValidationResult,
 ): VfxBackendSupportReport {
-  const warnings: VfxSupportDiagnostic[] = validationWarnings(validation);
+  const warnings: VfxSupportDiagnostic[] = validationWarnings(
+    validation,
+    "pixi2d",
+  );
   const blockers: VfxSupportDiagnostic[] = validationBlockers(validation);
 
   for (const feature of collectPixiVfxUnsupportedFeatures(effect)) {
@@ -49,6 +52,7 @@ export function collectPixiBackendSupport(
     status: statusFromDiagnostics(warnings, blockers),
     warnings: dedupeDiagnostics(warnings),
     blockers: dedupeDiagnostics(blockers),
+    ...supportNotes(validation, "pixi2d"),
   };
 }
 
@@ -56,9 +60,7 @@ export function collectThreeBackendSupport(
   effect: ParticleEffectDefinition,
   validation?: VfxValidationResult,
 ): VfxBackendSupportReport {
-  const warnings = validationWarnings(validation).filter(
-    (warning) => !isPixiSpecificWarning(warning),
-  );
+  const warnings = validationWarnings(validation, "three3d");
   const blockers = validationBlockers(validation);
 
   effect.emitters.forEach((emitter, emitterIndex) => {
@@ -114,19 +116,48 @@ export function collectThreeBackendSupport(
     status: statusFromDiagnostics(warnings, blockers),
     warnings: dedupeDiagnostics(warnings),
     blockers: dedupeDiagnostics(blockers),
+    ...supportNotes(validation, "three3d"),
   };
 }
 
+/**
+ * Validation warnings that apply to `backend`: unscoped warnings plus those
+ * whose `backend` tag matches (F4). Warnings the validator demoted to
+ * `infos` for the effect's target profile surface via `validationNotes`.
+ */
 function validationWarnings(
   validation: VfxValidationResult | undefined,
+  backend: "pixi2d" | "three3d",
 ): VfxSupportDiagnostic[] {
-  return (
-    validation?.warnings.map((warning) => ({
+  return (validation?.warnings ?? [])
+    .filter((warning) => !warning.backend || warning.backend === backend)
+    .map((warning) => ({
       code: warning.code,
       path: warning.path,
       message: warning.message,
-    })) ?? []
-  );
+    }));
+}
+
+/** Informational notes for `backend`; never feed status computation (F4). */
+function supportNotes(
+  validation: VfxValidationResult | undefined,
+  backend: "pixi2d" | "three3d",
+): { notes: VfxSupportDiagnostic[] } | Record<string, never> {
+  const notes = dedupeDiagnostics(validationNotes(validation, backend));
+  return notes.length > 0 ? { notes } : {};
+}
+
+function validationNotes(
+  validation: VfxValidationResult | undefined,
+  backend: "pixi2d" | "three3d",
+): VfxSupportDiagnostic[] {
+  return (validation?.infos ?? [])
+    .filter((info) => !info.backend || info.backend === backend)
+    .map((info) => ({
+      code: info.code,
+      path: info.path,
+      message: info.message,
+    }));
 }
 
 function validationBlockers(
@@ -138,13 +169,6 @@ function validationBlockers(
       path: blocker.path,
       message: blocker.message,
     })) ?? []
-  );
-}
-
-function isPixiSpecificWarning(warning: VfxSupportDiagnostic): boolean {
-  return (
-    warning.message.includes("Pixi 2.5D") ||
-    warning.message.includes("Pixi 2D shard")
   );
 }
 

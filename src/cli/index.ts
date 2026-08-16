@@ -379,6 +379,11 @@ function emitValidation(
   for (const issue of validation.warnings) {
     stdout(formatIssue("warning", issue, file));
   }
+  // Backend-semantics notes (F4): informational only — shown segregated from
+  // warnings and never counted, so a clean effect still summarizes as clean.
+  for (const issue of validation.infos) {
+    stdout(formatNote(issue, file));
+  }
   for (const issue of validation.errors) {
     stderr(formatIssue("error", issue, file));
   }
@@ -405,6 +410,12 @@ function formatIssue(
 ): string {
   const location = [file, issue.path].filter(Boolean).join(":");
   return `${severity} [${issue.code}]${location ? ` ${location}` : ""}: ${issue.message}`;
+}
+
+function formatNote(issue: VfxValidationIssue, file?: string): string {
+  const location = [file, issue.path].filter(Boolean).join(":");
+  const scope = issue.backend ? ` (${issue.backend} note)` : " (note)";
+  return `note [${issue.code}]${scope}${location ? ` ${location}` : ""}: ${issue.message}`;
 }
 
 function validationKey(issue: VfxValidationIssue | VfxExportBlocker): string {

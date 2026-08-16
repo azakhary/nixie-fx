@@ -3,6 +3,7 @@ import {
   PARTICLE_EMITTER_MODULE_KEYS,
   PARTICLE_MODULE_SUPPORT,
 } from "../../engine/particleModuleSettings";
+import { createDefaultParticleEffect } from "../../engine/particles";
 import { validateVfxTextureAssetPath } from "../assets/paths";
 import { validateVfxAuthoringEffect } from "./validation";
 
@@ -420,8 +421,8 @@ describe("vfx authoring validation", () => {
     }
   });
 
-  it("warns for authored depth render flags while allowing explicit disabled flags", () => {
-    const warned = validateVfxAuthoringEffect({
+  it("keeps authored depth render flags as non-gating pixi2d notes (F4)", () => {
+    const noted = validateVfxAuthoringEffect({
       app: "vfx-editor",
       kind: "particle-effect",
       version: 1,
@@ -454,17 +455,91 @@ describe("vfx authoring validation", () => {
       ],
     });
 
-    expect(warned.valid).toBe(true);
-    expect(warned.blockers).toEqual([]);
-    expect(warned.warnings).toEqual(
+    expect(noted.valid).toBe(true);
+    expect(noted.blockers).toEqual([]);
+    // Backend-semantics documentation, not defects: Pixi renders these flags
+    // with its designed 2.5D model, Three uses the real depth buffer — so
+    // they surface as informational notes and never as gating warnings.
+    expect(noted.warnings).toEqual([]);
+    expect(noted.infos).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ path: "emitters.0.render.depthTest" }),
+        expect.objectContaining({
+          path: "emitters.0.render.depthTest",
+          backend: "pixi2d",
+          severity: "info",
+        }),
         expect.objectContaining({ path: "emitters.0.render.depthWrite" }),
         expect.objectContaining({ path: "emitters.0.render.depthInk" }),
       ]),
     );
     expect(disabled.valid).toBe(true);
     expect(disabled.blockers).toEqual([]);
+    expect(disabled.infos).toEqual([]);
+  });
+
+  it("scopes backend-tagged warnings to the effect's target profile (F4)", () => {
+    const shardEmitter = { id: "shards", mode: "mesh" };
+    const forProfile = (targetProfile: string) =>
+      validateVfxAuthoringEffect({
+        app: "vfx-editor",
+        kind: "particle-effect",
+        version: 1,
+        id: `shards-${targetProfile}`,
+        targetProfile,
+        emitters: [shardEmitter],
+      });
+
+    // The pixiShard fidelity warning documents Pixi semantics: it gates
+    // pixi-ui-2d and portable targets, and demotes to an informational note
+    // for three-world-3d (the Three backend raises its own report warning).
+    const pixiTarget = forProfile("pixi-ui-2d");
+    expect(pixiTarget.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "emitters.0.mode" }),
+      ]),
+    );
+
+    const portableTarget = forProfile("portable");
+    expect(portableTarget.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "emitters.0.mode" }),
+      ]),
+    );
+
+    const threeTarget = forProfile("three-world-3d");
+    expect(
+      threeTarget.warnings.some((issue) => issue.path === "emitters.0.mode"),
+    ).toBe(false);
+    expect(threeTarget.infos).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "emitters.0.mode",
+          backend: "pixi2d",
+          severity: "info",
+        }),
+      ]),
+    );
+  });
+
+  it("validates a freshly created effect clean for every target profile (F4)", () => {
+    for (const targetProfile of [
+      "pixi-ui-2d",
+      "three-world-3d",
+      "portable",
+    ] as const) {
+      const created = createDefaultParticleEffect(
+        `fresh-${targetProfile}`,
+        "Fresh",
+      );
+      const result = validateVfxAuthoringEffect({
+        ...created,
+        targetProfile,
+      });
+      expect(result.valid, `${targetProfile} should be valid`).toBe(true);
+      expect(result.errors, `${targetProfile} errors`).toEqual([]);
+      expect(result.warnings, `${targetProfile} warnings`).toEqual([]);
+      expect(result.blockers, `${targetProfile} blockers`).toEqual([]);
+    }
   });
 });
 

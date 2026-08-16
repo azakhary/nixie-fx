@@ -66,8 +66,17 @@ export interface VfxExportSupport {
   unsupportedModules: string[];
   /** Authoring paths of modules/features with approximate ("partial") support. */
   partialModules: string[];
-  /** Human-readable warning messages surfaced during validation. */
+  /**
+   * Human-readable warning messages surfaced during validation, scoped to
+   * the effect's target profile — these gate `status` (F4).
+   */
   warnings: string[];
+  /**
+   * Informational backend-semantics notes (F4), e.g. how the non-target
+   * backend renders authored depth flags. Never gate `status`. Prefixed
+   * with the backend they describe; omitted when empty.
+   */
+  notes?: string[];
 }
 
 export interface VfxExportedEffect {
