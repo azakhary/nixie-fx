@@ -90,9 +90,7 @@ export function createThreeEmitterMaterial(
   let texture = sourceTexture;
   const ownedTextures: Texture[] = [...source.ownedTextures];
   let key = [
-    emitterTexturePath(emitter) ??
-      emitterProceduralBillboardKey(emitter) ??
-      "",
+    emitterTexturePath(emitter) ?? emitterProceduralBillboardKey(emitter) ?? "",
     emitter.render.opacitySource,
     Number(emitter.render.opacityInvert),
   ].join(":");

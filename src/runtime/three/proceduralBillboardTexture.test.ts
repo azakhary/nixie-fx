@@ -57,10 +57,7 @@ describe("Three procedural billboard textures (F12)", () => {
   });
 
   it("draws an opaque-center, transparent-edge circle", () => {
-    const texture = getProceduralBillboardTexture(
-      "circle",
-      0.4,
-    ) as DataTexture;
+    const texture = getProceduralBillboardTexture("circle", 0.4) as DataTexture;
     const size = textureSize(texture);
     const center = Math.floor(size / 2);
 

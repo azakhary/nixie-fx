@@ -1385,9 +1385,9 @@ describe("ThreeVfxRenderer transform MVP", () => {
 
     renderer.update(1 / 60);
     expect(instance.stats.bloomSourceParticles).toBe(1);
-    expect(instancedColorPeak(firstInstancedBillboard(instance))).toBeGreaterThan(
-      1,
-    );
+    expect(
+      instancedColorPeak(firstInstancedBillboard(instance)),
+    ).toBeGreaterThan(1);
 
     renderer.setPreviewBloomOptions({ enabled: false });
     expect(

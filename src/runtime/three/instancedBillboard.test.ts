@@ -85,9 +85,27 @@ describe("ThreeInstancedBillboardView camera-distance sort (F13)", () => {
   it("rewrites instances far-to-near with colors and alphas following", () => {
     const view = viewFor({ sortMode: "distanceFarFirst" });
     // Written in age order; x doubles as the instance's identity.
-    view.write(0, new Matrix4().makeTranslation(1, 0, 0), new Color(1, 0, 0), 0.1, 1);
-    view.write(1, new Matrix4().makeTranslation(2, 0, 0), new Color(0, 1, 0), 0.2, 9);
-    view.write(2, new Matrix4().makeTranslation(3, 0, 0), new Color(0, 0, 1), 0.3, 4);
+    view.write(
+      0,
+      new Matrix4().makeTranslation(1, 0, 0),
+      new Color(1, 0, 0),
+      0.1,
+      1,
+    );
+    view.write(
+      1,
+      new Matrix4().makeTranslation(2, 0, 0),
+      new Color(0, 1, 0),
+      0.2,
+      9,
+    );
+    view.write(
+      2,
+      new Matrix4().makeTranslation(3, 0, 0),
+      new Color(0, 0, 1),
+      0.3,
+      4,
+    );
 
     view.sortByCameraDistance(3, true);
     view.commit(3);
