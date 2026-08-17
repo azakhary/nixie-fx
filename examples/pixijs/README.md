@@ -50,6 +50,6 @@ manifest reports `supported` for both PixiJS and Three.js.
 
 ## CodeSandbox
 
-This folder is intentionally self-contained and ready for direct CodeSandbox
-import. The permanent public sandbox link will be added after the reviewed
-example is published.
+[Open the runnable PixiJS v8 example in CodeSandbox](https://codesandbox.io/p/sandbox/xw6h74).
+The sandbox is a standalone snapshot of this folder, including the compiled
+`opening-engine` export and its texture.
