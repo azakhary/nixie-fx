@@ -50,6 +50,7 @@ manifest reports `supported` for both PixiJS and Three.js.
 
 ## CodeSandbox
 
-[Open the runnable PixiJS v8 example in CodeSandbox](https://codesandbox.io/p/sandbox/xw6h74).
+[Open the runnable PixiJS v8 example in CodeSandbox](https://codesandbox.io/p/sandbox/ny2r5y).
 The sandbox is a standalone snapshot of this folder, including the compiled
-`opening-engine` export and its texture.
+`opening-engine` export and its texture. A cold first visit can briefly show
+CodeSandbox's “Transpiling Modules” screen before the live effect appears.

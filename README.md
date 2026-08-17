@@ -106,6 +106,13 @@ Always inspect the exported backend support report. A blocked effect must not
 be silently treated as supported, and a partial effect can contain deliberate
 backend approximations.
 
+## Examples
+
+- [Three.js digit embers](./examples/threejs) — the NixieFX landing scene as a
+  standalone runtime integration. [Open in CodeSandbox](https://codesandbox.io/p/sandbox/y3z3sf).
+- [PixiJS v8 opening engine](./examples/pixijs) — a responsive 2D integration
+  driven by Pixi's ticker. [Open in CodeSandbox](https://codesandbox.io/p/sandbox/ny2r5y).
+
 ## Other engines
 
 The export format is engine-neutral JSON: `manifest.json` plus per-effect

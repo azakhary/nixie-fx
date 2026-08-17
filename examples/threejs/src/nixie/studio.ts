@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
+import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import type { NixieGlowPalette } from "./glowPalette";
 
 export interface StudioEnvironmentHandle {

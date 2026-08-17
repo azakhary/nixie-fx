@@ -59,6 +59,7 @@ cleanup. NixieFX owns only the particle objects it creates.
 
 ## CodeSandbox
 
-[Open the runnable Three.js example in CodeSandbox](https://codesandbox.io/p/sandbox/vtvrfv).
+[Open the runnable Three.js example in CodeSandbox](https://codesandbox.io/p/sandbox/y3z3sf).
 The sandbox is a standalone snapshot of this folder, including the compiled
-`digit-embers` export and its declared assets.
+`digit-embers` export and its declared assets. A cold first visit can briefly
+show CodeSandbox's “Transpiling Modules” screen before the live scene appears.
