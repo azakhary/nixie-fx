@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A minimal NixieFX particle effect running in PixiJS v8."
+    />
+    <title>NixieFX × PixiJS v8</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main id="app" aria-label="NixieFX PixiJS particle demo">
+      <header class="demo-header">
+        <div>
+          <p class="eyebrow">NixieFX runtime example</p>
+          <h1>PixiJS <span>v8</span></h1>
+        </div>
+        <a
+          href="https://github.com/azakhary/nixie-fx/tree/main/examples/pixijs"
+          target="_blank"
+          rel="noreferrer"
+          >View source</a
+        >
+      </header>
+
+      <div class="metrics" aria-live="polite">
+        <strong id="fps">-- FPS</strong>
+        <span id="particles">0 particles</span>
+      </div>
+
+      <p id="status" class="status">Loading opening-engine…</p>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

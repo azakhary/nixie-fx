@@ -1,0 +1,114 @@
+{
+  "kind": "vfx-manifest",
+  "version": 1,
+  "generatedAt": "2026-08-15T15:23:08.603Z",
+  "sourceHash": "fnv1a32:ac07ab76",
+  "effects": [
+    {
+      "id": "digit-embers",
+      "name": "Digit Embers",
+      "path": "effects/effects/digit-embers.json",
+      "sourceEffectFile": "effects/digit-embers.json",
+      "sourceEffectId": "digit-embers",
+      "sourceHash": "fnv1a32:f26bf352",
+      "support": {
+        "status": "partial",
+        "overall": "partial",
+        "targetProfile": "three-world-3d",
+        "preferredBackend": "three3d",
+        "portableSubset": false,
+        "backends": {
+          "pixi2d": {
+            "backend": "pixi2d",
+            "status": "partial",
+            "warnings": [
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.modules.noise",
+                "message": "noise has partial runtime export support; validate authored subfields before shipping."
+              },
+              {
+                "code": "spawn.shape.mesh",
+                "path": "emitters.0.spawn.shape",
+                "message": "Mesh spawn shape requires the Three 3D/world backend to load emission geometry; Pixi falls back to point emission.",
+                "emitterId": "embers",
+                "emitterIndex": 0
+              }
+            ],
+            "blockers": []
+          },
+          "three3d": {
+            "backend": "three3d",
+            "status": "partial",
+            "warnings": [
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.modules.noise",
+                "message": "noise has partial runtime export support; validate authored subfields before shipping."
+              }
+            ],
+            "blockers": []
+          }
+        },
+        "unsupportedModules": [],
+        "partialModules": [
+          "emitters.0.render.depthTest",
+          "emitters.0.render.depthInk",
+          "emitters.0.modules.noise"
+        ],
+        "warnings": [
+          "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "noise has partial runtime export support; validate authored subfields before shipping."
+        ]
+      }
+    }
+  ],
+  "assets": [
+    {
+      "id": "glow",
+      "type": "texture",
+      "path": "textures/glow.png"
+    },
+    {
+      "id": "digit-test",
+      "type": "mesh",
+      "path": "meshes/digit-test.json"
+    }
+  ],
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [
+      {
+        "severity": "warning",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+      },
+      {
+        "severity": "warning",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+      },
+      {
+        "severity": "warning",
+        "code": "unsupported-module",
+        "path": "emitters.0.modules.noise",
+        "message": "noise has partial runtime export support; validate authored subfields before shipping."
+      }
+    ],
+    "blockers": []
+  }
+}

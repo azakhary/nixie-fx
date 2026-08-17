@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A Three.js NixieFX runtime example with live digit-change embers."
+    />
+    <title>NixieFX + Three.js — Digit Embers</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <main class="demo-shell">
+      <div
+        id="viewport"
+        class="viewport"
+        aria-label="Interactive Three.js nixie tube scene"
+      ></div>
+
+      <header class="intro">
+        <p class="eyebrow">
+          <span aria-hidden="true"></span>Three.js runtime example
+        </p>
+        <h1>Digit embers</h1>
+        <p class="lede">
+          The NixieFX landing effect, isolated as a clean Three.js runtime
+          integration.
+        </p>
+      </header>
+
+      <aside class="telemetry" aria-label="Runtime diagnostics">
+        <div class="runtime-state">
+          <span
+            id="status-light"
+            class="status-light"
+            aria-hidden="true"
+          ></span>
+          <span id="status-label">Loading runtime</span>
+        </div>
+        <dl>
+          <div>
+            <dt>Frame rate</dt>
+            <dd><span id="fps-value">--</span> fps</dd>
+          </div>
+          <div>
+            <dt>Particles</dt>
+            <dd id="particle-value">--</dd>
+          </div>
+          <div>
+            <dt>Backend</dt>
+            <dd id="support-value">checking</dd>
+          </div>
+        </dl>
+        <p id="runtime-message" aria-live="polite">
+          Fetching the compiled VFX bundle…
+        </p>
+      </aside>
+
+      <p class="orbit-hint">
+        Drag to orbit <span aria-hidden="true">·</span> Scroll to zoom
+      </p>
+
+      <div id="fatal-error" class="fatal-error" role="alert" hidden>
+        <strong>The example could not start.</strong>
+        <span id="fatal-error-message"></span>
+      </div>
+    </main>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

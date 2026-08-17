@@ -1,0 +1,311 @@
+:root {
+  color: #f1e7d8;
+  background: #0b0908;
+  font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --ember: #ff4a0e;
+  --ember-soft: #d98351;
+  --paper: #f1e7d8;
+  --muted: #a69587;
+  --panel: rgba(20, 14, 11, 0.7);
+  --line: rgba(236, 200, 170, 0.17);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background:
+    radial-gradient(
+      circle at 50% 38%,
+      rgba(114, 52, 21, 0.16),
+      transparent 36%
+    ),
+    #0b0908;
+}
+
+.demo-shell,
+.viewport {
+  position: absolute;
+  inset: 0;
+}
+
+.demo-shell {
+  min-height: 100svh;
+  isolation: isolate;
+}
+
+.viewport {
+  z-index: 0;
+}
+
+.viewport::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(
+      90deg,
+      rgba(8, 6, 5, 0.55),
+      transparent 26%,
+      transparent 74%,
+      rgba(8, 6, 5, 0.42)
+    ),
+    linear-gradient(
+      180deg,
+      rgba(8, 6, 5, 0.2),
+      transparent 34%,
+      rgba(8, 6, 5, 0.22)
+    );
+}
+
+.viewport canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  touch-action: none;
+}
+
+.viewport canvas:focus-visible {
+  outline: 1px solid var(--ember-soft);
+  outline-offset: -5px;
+}
+
+.intro {
+  position: absolute;
+  z-index: 2;
+  top: clamp(1.35rem, 4vw, 3.5rem);
+  left: clamp(1.35rem, 5vw, 4.75rem);
+  width: min(29rem, calc(100vw - 2.7rem));
+  pointer-events: none;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0 0 0.9rem;
+  color: var(--ember-soft);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.69rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.eyebrow span {
+  width: 1.75rem;
+  height: 1px;
+  background: currentColor;
+  box-shadow: 0 0 12px var(--ember);
+}
+
+h1 {
+  margin: 0;
+  color: var(--paper);
+  font-family: "Avenir Next Condensed", "Arial Narrow", sans-serif;
+  font-size: clamp(2.55rem, 7vw, 6.2rem);
+  font-stretch: condensed;
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 0.88;
+  text-wrap: balance;
+}
+
+.lede {
+  width: min(24rem, 90%);
+  margin: 1.1rem 0 0;
+  color: var(--muted);
+  font-size: clamp(0.88rem, 1.3vw, 1rem);
+  line-height: 1.55;
+}
+
+.telemetry {
+  position: absolute;
+  z-index: 2;
+  right: clamp(1rem, 3vw, 2.5rem);
+  bottom: clamp(1rem, 3vw, 2.5rem);
+  width: min(20.5rem, calc(100vw - 2rem));
+  padding: 1rem 1.05rem 0.95rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px) saturate(115%);
+}
+
+.runtime-state {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.85rem;
+  color: #d8cbbf;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.67rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.status-light {
+  width: 0.43rem;
+  height: 0.43rem;
+  border-radius: 999px;
+  background: #826f65;
+  box-shadow: 0 0 0 4px rgba(130, 111, 101, 0.1);
+}
+
+.status-light.is-live {
+  background: var(--ember);
+  box-shadow:
+    0 0 0 4px rgba(255, 74, 14, 0.12),
+    0 0 16px rgba(255, 74, 14, 0.85);
+}
+
+.status-light.is-warning {
+  background: #f5b84d;
+  box-shadow: 0 0 0 4px rgba(245, 184, 77, 0.12);
+}
+
+.telemetry dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.telemetry dl > div {
+  min-width: 0;
+  padding: 0.72rem 0.6rem 0.7rem 0;
+}
+
+.telemetry dl > div + div {
+  padding-left: 0.7rem;
+  border-left: 1px solid var(--line);
+}
+
+.telemetry dt {
+  overflow: hidden;
+  margin-bottom: 0.32rem;
+  color: #82736a;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.telemetry dd {
+  overflow: hidden;
+  margin: 0;
+  color: #eadfd5;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#runtime-message {
+  margin: 0.75rem 0 0;
+  color: #93857b;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.orbit-hint {
+  position: absolute;
+  z-index: 2;
+  bottom: clamp(1.2rem, 3vw, 2.75rem);
+  left: clamp(1.35rem, 5vw, 4.75rem);
+  margin: 0;
+  color: rgba(222, 208, 197, 0.55);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.fatal-error {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 50%;
+  width: min(31rem, calc(100vw - 2rem));
+  padding: 1.2rem 1.25rem;
+  border: 1px solid rgba(255, 98, 54, 0.4);
+  background: rgba(26, 10, 7, 0.94);
+  box-shadow: 0 28px 100px rgba(0, 0, 0, 0.5);
+  color: #f2d7ca;
+  line-height: 1.5;
+  transform: translate(-50%, -50%);
+}
+
+.fatal-error strong,
+.fatal-error span {
+  display: block;
+}
+
+.fatal-error span {
+  margin-top: 0.35rem;
+  color: #c6a79a;
+  font-size: 0.86rem;
+}
+
+@media (max-width: 720px) {
+  .intro {
+    top: 1.25rem;
+    left: 1.2rem;
+  }
+
+  h1 {
+    font-size: clamp(2.6rem, 15vw, 4.6rem);
+  }
+
+  .lede {
+    max-width: 18rem;
+    font-size: 0.82rem;
+  }
+
+  .telemetry {
+    right: 0.75rem;
+    bottom: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+  }
+
+  .orbit-hint {
+    display: none;
+  }
+}
+
+@media (max-height: 600px) {
+  .lede {
+    display: none;
+  }
+
+  .telemetry {
+    padding-block: 0.75rem;
+  }
+
+  #runtime-message {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-light {
+    transition: none;
+  }
+}

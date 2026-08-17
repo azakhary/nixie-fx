@@ -1,0 +1,54 @@
+{
+  "kind": "vfx-manifest",
+  "version": 1,
+  "generatedAt": "2026-08-17T17:22:50.872Z",
+  "sourceHash": "fnv1a32:2137e815",
+  "effects": [
+    {
+      "id": "opening-engine",
+      "name": "Opening Engine Exhaust",
+      "path": "effects/opening-engine.json",
+      "sourceEffectFile": "opening-engine.json",
+      "sourceEffectId": "opening-engine",
+      "sourceHash": "fnv1a32:e4760f5d",
+      "support": {
+        "status": "supported",
+        "overall": "supported",
+        "targetProfile": "three-world-3d",
+        "preferredBackend": "three3d",
+        "portableSubset": true,
+        "backends": {
+          "pixi2d": {
+            "backend": "pixi2d",
+            "status": "supported",
+            "warnings": [],
+            "blockers": []
+          },
+          "three3d": {
+            "backend": "three3d",
+            "status": "supported",
+            "warnings": [],
+            "blockers": []
+          }
+        },
+        "unsupportedModules": [],
+        "partialModules": [],
+        "warnings": []
+      }
+    }
+  ],
+  "assets": [
+    {
+      "id": "eff-fire",
+      "type": "texture",
+      "path": "textures/eff-fire.png"
+    }
+  ],
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "infos": [],
+    "blockers": []
+  }
+}
