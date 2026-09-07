@@ -308,7 +308,7 @@ void main(void) {
     return `${MATERIAL_FRAGMENT_HEADER}${this.samplerUniformDeclarations()}
 void main(void) {
   vec4 value = ${selectedExpr};
-  gl_FragColor = vec4(clamp(value.rgb, 0.0, 1.0), clamp(value.a, 0.0, 1.0));
+  gl_FragColor = vec4(clamp(value.rgb, 0.0, 1.0), ${node.type === "polarCoordinates" ? "1.0" : "clamp(value.a, 0.0, 1.0)"});
 }
 `;
   }
@@ -387,6 +387,26 @@ void main(void) {
         const t = node.inputs.time ? inputScalar("time", 0) : "uTime";
         const speed = this.constVec4(p.speed);
         return `vec4((${uv}).xy + (${t}) * (${speed}).xy, 0.0, 0.0)`;
+      }
+      case "polarCoordinates": {
+        const uv = input("UV", "vec4(vUV, 0.0, 0.0)");
+        const center = input(
+          "Center",
+          this.constVec4(p.center, [0.5, 0.5, 0, 0]),
+        );
+        const radialScale = inputScalar(
+          "Radial Scale",
+          this.number(p.radialScale, 1),
+        );
+        const lengthScale = inputScalar(
+          "Length Scale",
+          this.number(p.lengthScale, 1),
+        );
+        const delta = `((${uv}).xy - (${center}).xy)`;
+        // Unity's atan2(x, y) orientation and signed angle; the origin is defined
+        // as zero to avoid GLSL atan(0, 0), which is undefined on some GPUs.
+        const angle = `(dot(${delta}, ${delta}) == 0.0 ? 0.0 : atan((${delta}).x, (${delta}).y))`;
+        return `vec4(length(${delta}) * 2.0 * (${radialScale}), ${angle} / 6.28 * (${lengthScale}), 0.0, 0.0)`;
       }
       case "rotateUV": {
         const uv = input("uv", "vec4(vUV, 0.0, 0.0)");

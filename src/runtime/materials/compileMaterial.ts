@@ -511,6 +511,22 @@ export function analyzeGraphTier(graph: ShaderGraph): TierAnalysis {
   }
   const perParticle = perParticleNodeIds.length > 0;
 
+  // Polar UVs are nonlinear: neither vertex interpolation nor the static
+  // MainTex bake (which receives an already sampled texel) can represent them.
+  // Keep the entire UV chain in the fragment shader, including any panners.
+  if (
+    [...reachable].some(
+      (id) => index.nodeById.get(id)?.type === "polarCoordinates",
+    )
+  ) {
+    return {
+      tier: "tier2-shader",
+      deferredNodeIds: [],
+      vertexUvNodeIds: [],
+      perParticleNodeIds,
+    };
+  }
+
   // Per-pixel fragment op that can't bake AND isn't vertex-UV: forces Tier 2.
   // A fragment op is "per-pixel" only when a non-static (per-particle / per-time)
   // signal reaches it; a fully static fragment op bakes (Tier 0).

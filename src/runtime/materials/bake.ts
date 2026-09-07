@@ -62,7 +62,11 @@ import {
  * --------------------------------------------------------------------------
  */
 
-/** A bakeable (static, per-texel) node type — the rest force a higher tier. */
+/**
+ * A bakeable (static, per-texel) node type — the rest force a higher tier.
+ * Polar Coordinates deliberately uses the shader tier: MainTex bakes receive
+ * an already sampled source texel and cannot resample nonlinear UV transforms.
+ */
 export const BAKEABLE_NODE_TYPES: ReadonlySet<MaterialNodeType> =
   new Set<MaterialNodeType>([
     "param",
@@ -416,6 +420,29 @@ function evalNodeInner(
     }
     case "uv":
       return [ctx.uv[0], ctx.uv[1], 0, 0];
+    case "polarCoordinates": {
+      const uv = inp("UV", [ctx.uv[0], ctx.uv[1], 0, 0]);
+      const center = inp(
+        "Center",
+        toVec4((p.center ?? [0.5, 0.5, 0, 0]) as Vec4),
+      );
+      const radialScale = inp(
+        "Radial Scale",
+        toVec4(numberOr(p.radialScale, 1)),
+      )[0];
+      const lengthScale = inp(
+        "Length Scale",
+        toVec4(numberOr(p.lengthScale, 1)),
+      )[0];
+      const x = uv[0] - center[0];
+      const y = uv[1] - center[1];
+      return [
+        Math.hypot(x, y) * 2 * radialScale,
+        (Math.atan2(x, y) / 6.28) * lengthScale,
+        0,
+        0,
+      ];
+    }
     case "tilingOffset": {
       const uv = inp("uv", [ctx.uv[0], ctx.uv[1], 0, 0]);
       const tile = toVec4(p.tile as Vec4);

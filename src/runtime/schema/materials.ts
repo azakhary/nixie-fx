@@ -166,6 +166,7 @@ export type MaterialNodeType =
   | "particleSubUV"
   | "uv"
   | "tilingOffset"
+  | "polarCoordinates"
   | "rotateUV"
   | "panner"
   | "multiply"
@@ -227,6 +228,7 @@ export const MATERIAL_NODE_TYPES: readonly MaterialNodeType[] = [
   "particleSubUV",
   "uv",
   "tilingOffset",
+  "polarCoordinates",
   "rotateUV",
   "panner",
   "multiply",
