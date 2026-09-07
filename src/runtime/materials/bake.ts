@@ -10,6 +10,7 @@ import type {
   ShaderGraph,
 } from "../schema/materials";
 import {
+  isSpriteMasterGraph,
   resolveMaterialParamValue,
   resolveMaterialTextureNodeBinding,
 } from "../schema/materials";
@@ -802,9 +803,18 @@ export function makeTexelEvaluator(
   const opacitySrc = slotSource("opacity");
   const maskSrc = slotSource("opacityMask");
   const emissiveSrc = slotSource("emissive");
-  const fixedTint = resolveColorParam(graph, instance, "Tint", [1, 1, 1, 1]);
-  const fixedEmissive = resolveFloatParam(graph, instance, "Emissive", 0);
-  const fixedOpacity = resolveFloatParam(graph, instance, "Opacity", 1);
+  // Only the graphless builtin has implicit controls. Authored parameters
+  // contribute through reachable nodes, never through their names alone.
+  const builtin = isSpriteMasterGraph(graph);
+  const fixedTint: Vec4 = builtin
+    ? resolveColorParam(graph, instance, "Tint", [1, 1, 1, 1])
+    : [1, 1, 1, 1];
+  const fixedEmissive = builtin
+    ? resolveFloatParam(graph, instance, "Emissive", 0)
+    : 0;
+  const fixedOpacity = builtin
+    ? resolveFloatParam(graph, instance, "Opacity", 1)
+    : 1;
 
   const evalSlot = (
     src: { node: MaterialNode; handle: string },

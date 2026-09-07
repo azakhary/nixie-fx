@@ -618,6 +618,101 @@ describe("compileMaterial", () => {
     expect(art.deferredNodeIds).toEqual([]);
   });
 
+  it.each(["empty", "disconnected", "baked", "animated"])(
+    "keeps unused parameters neutral in %s graphs and instance overrides",
+    (kind) => {
+      const g = graph({ params: createSpriteMasterGraph().params });
+      if (kind !== "empty") {
+        g.nodes.push(node("unused", "param", {}, { name: "Tint" }));
+      }
+      if (kind === "baked" || kind === "animated") {
+        g.nodes.push(
+          node(
+            "base",
+            kind === "baked" ? "constant" : "time",
+            {},
+            { value: [0.2, 0.3, 0.4, 0.8] },
+          ),
+        );
+        g.edges.push(edge("base", "base", "out", "baseColor"));
+        g.outputs.baseColor = "base";
+      }
+      const instance = createMaterialInstance(g, "i");
+      instance.paramOverrides = {
+        Tint: [0.2, 0, 0, 0.2],
+        Emissive: 4,
+        Opacity: 0.2,
+      };
+      const artifact = compileMaterial(g, instance);
+      expect(artifact.fixed).toMatchObject({
+        tint: [1, 1, 1, 1],
+        emissive: 0,
+        opacity: 1,
+      });
+      expect(
+        makeTexelEvaluator(g, instance)([0.3, 0.4, 0.5, 0.6], [0, 0]),
+      ).toEqual(
+        makeTexelEvaluator(g, createMaterialInstance(g, "default"))(
+          [0.3, 0.4, 0.5, 0.6],
+          [0, 0],
+        ),
+      );
+    },
+  );
+
+  it.each([
+    ["Tint", "baseColor", [0.5, 0.25, 0.1, 0.8], [0.5, 0.25, 0.1, 0.8]],
+    ["Opacity", "opacity", 0.5, [0.2, 0.3, 0.4, 0.5]],
+    ["Emissive", "emissive", 1, [0.4, 0.6, 0.8, 0.9]],
+  ] as const)(
+    "evaluates connected %s exactly once",
+    (name, slot, value, expected) => {
+      const g = graph({
+        params: createSpriteMasterGraph().params,
+        nodes: [node("p", "param", {}, { name })],
+        edges: [edge("e", "p", "out", slot)],
+        outputs: { [slot]: "e" },
+      });
+      const instance = createMaterialInstance(g, "i");
+      instance.paramOverrides[name] =
+        typeof value === "number"
+          ? value
+          : ([...value] as [number, number, number, number]);
+      expect(compileMaterial(g, instance).fixed).toMatchObject({
+        tint: [1, 1, 1, 1],
+        emissive: 0,
+        opacity: 1,
+      });
+      const output = makeTexelEvaluator(g, instance)(
+        [0.2, 0.3, 0.4, 0.9],
+        [0, 0],
+      );
+      expected.forEach((v, i) => expect(output[i]).toBeCloseTo(v));
+      g.outputs[slot] = null;
+      expect(
+        makeTexelEvaluator(g, instance)([0.2, 0.3, 0.4, 0.9], [0, 0]),
+      ).toEqual([0.2, 0.3, 0.4, 0.9]);
+    },
+  );
+
+  it("evaluates parameter outputs beside animated UVs in a shader", () => {
+    const g = graph({
+      params: createSpriteMasterGraph().params,
+      nodes: [
+        node("pan", "panner", {}, { speed: [0.1, 0] }),
+        node("tex", "textureSample", { uv: "uv" }),
+        node("p", "param", {}, { name: "Opacity" }),
+      ],
+      edges: [
+        edge("uv", "pan", "tex", "uv"),
+        edge("base", "tex", "out", "baseColor"),
+        edge("alpha", "p", "out", "opacity"),
+      ],
+      outputs: { baseColor: "base", opacity: "alpha" },
+    });
+    expect(analyzeGraphTier(g).tier).toBe("tier2-shader");
+  });
+
   it("propagates the authoritative graph blend into every artifact (I12-G)", () => {
     // Tier 0: static texture graph.
     const tier0 = graph({
@@ -945,7 +1040,7 @@ describe("bake evaluator", () => {
     expect(out[3]).toBeCloseTo(1, 5);
   });
 
-  it("folds canonical material controls into Tier-0 baked output", () => {
+  it("ignores unreferenced canonical parameters in Tier-0 baked output", () => {
     const g = graph({
       params: [
         {
@@ -976,10 +1071,10 @@ describe("bake evaluator", () => {
     });
     const evaluate = makeTexelEvaluator(g, createMaterialInstance(g, "i"));
     const out = evaluate([1, 1, 1, 1], [0.5, 0.5]);
-    expect(out[0]).toBeCloseTo(1, 5);
-    expect(out[1]).toBeCloseTo(0, 5);
-    expect(out[2]).toBeCloseTo(0, 5);
-    expect(out[3]).toBeCloseTo(0.3, 5);
+    expect(out[0]).toBeCloseTo(0.5, 5);
+    expect(out[1]).toBeCloseTo(0.5, 5);
+    expect(out[2]).toBeCloseTo(0.5, 5);
+    expect(out[3]).toBeCloseTo(0.8, 5);
   });
 
   it("oneMinus inverts a channel", () => {
