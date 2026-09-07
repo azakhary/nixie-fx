@@ -1520,10 +1520,7 @@ describe("Pixi VFX runtime renderer", () => {
     expect(defaulted).toEqual(none);
   });
 
-  // M6-E: prove materials now affect the particle via the RENDERER's
-  // per-particle fold (resolveEmitterMaterialFixed → updateParticle), not the
-  // editor preview evaluator.
-  it("M6-E: a faithful non-white Tint graph tints the particle (differs from the texture-only baseline)", () => {
+  it("ignores an unused Tint in an animated Tier-1 texture graph", () => {
     const graph = tintParamGraph([1, 0, 0, 1]);
     const sampleWith = (material: unknown) => {
       const instance = new PixiVfxEffectInstance({
@@ -1543,10 +1540,7 @@ describe("Pixi VFX runtime renderer", () => {
     // texture-only baseline = NO material (identity per-particle tint).
     const baseline = sampleWith(null);
     const tinted = sampleWith({ id: "mi-tint", shaderId: graph.id });
-    // The red Tint folds into the per-particle tint, so it must DIFFER from the
-    // untinted baseline (white init × red Tint → green/blue zeroed).
-    expect(tinted).not.toBe(baseline);
-    expect((tinted as number) & 0xffff).toBe(0); // green+blue zeroed by red Tint
+    expect(tinted).toBe(baseline);
   });
 
   it("M6-E: a particleColor→baseColor graph escalates to a Tier-2 shader (no longer a silent Tier-1 no-op)", () => {
@@ -2285,13 +2279,14 @@ describe("Pixi VFX runtime renderer", () => {
   });
 
   it("I12-G: a masked/opaque material suppresses the additive overbright alpha boost", () => {
-    // Tier-1 params-only graph: Emissive 4 folds a 5x overbright peak into the
+    // Graphless Sprite Master: Emissive 4 folds a 5x overbright peak into the
     // per-particle color and Opacity 0.5 leaves headroom to observe the boost.
     const emissiveGraph = (
       blend: "normal" | "masked" | "opaque",
     ): ShaderGraph =>
       normalizeShaderGraph({
         id: `emissive-${blend}-material`,
+        builtin: "sprite-master",
         name: `Emissive ${blend} Material`,
         blend,
         params: [
@@ -3447,14 +3442,7 @@ function testEffect(): unknown {
   };
 }
 
-/**
- * A FAITHFUL Tier-1 graph: baseColor ← a bare textureSample (the texture-only
- * path resolveFixed reproduces) whose UV is animated by a vertex-stage panner
- * (so it is NOT preempted by the static Tier-0 bake), PLUS a non-white "Tint"
- * color param that resolveFixed folds into the per-particle tint. This exercises
- * M6-A's faithful Tier-1 fallback through the renderer's per-particle fold
- * (resolveEmitterMaterialFixed → updateParticle), NOT evaluatePreviewOutputs.
- */
+/** Animated texture-only graph with a defined but unused Tint parameter. */
 function tintParamGraph(tint: [number, number, number, number]): ShaderGraph {
   return normalizeShaderGraph({
     id: "tint-param",

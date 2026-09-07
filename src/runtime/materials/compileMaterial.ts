@@ -374,32 +374,9 @@ function feedsOnlyTextureUv(
 }
 
 /**
- * The canonical "magic" param name `resolveFixed` reads for each output slot
- * (techspec §6.1 Tier-1). A Tier-1 fixed-function descriptor can ONLY represent
- * an output if it is driven by exactly this bare param (Tint/Emissive/Opacity).
- */
-const FAITHFUL_OUTPUT_PARAM: Partial<Record<string, string>> = {
-  baseColor: "Tint",
-  emissive: "Emissive",
-  opacity: "Opacity",
-};
-
-/**
- * True when a wired output's source node is something `resolveFixed` (Tier-1)
- * faithfully represents WITHOUT throwing the wiring away:
- *  - the canonical magic `param` node for that slot (baseColor←"Tint",
- *    emissive←"Emissive", opacity←"Opacity"); or
- *  - a bare `textureSample` / `particleSubUV` — i.e. the texture-only path the
- *    renderer's fixed-function fold already reproduces byte-identically (the
- *    optional vertex-UV transform on its UV pin is the only allowed indirection).
- *
- * Anything else (a multiply/lerp/gradientRamp/constant/per-particle network)
- * has wiring `resolveFixed` cannot carry, so it is NOT faithful and must be
- * baked (Tier 0) or run as a real shader (Tier 2) instead of collapsing to a
- * no-op tint of [1,1,1,1]. This is the M6-A fix for "materials don't change the
- * particle". (The SpriteMaster builtin is short-circuited to Tier 1 separately
- * via `isSpriteMasterGraph`; its baseColor = Tint × MainTex multiply is NOT a
- * bare param and would correctly fail this predicate.)
+ * Only texture outputs can use the authored graph's fixed-function path.
+ * Parameter outputs must be evaluated by the graph, including their selected
+ * channel; folding names into global controls would apply them to other slots.
  */
 function isTier1Faithful(graph: ShaderGraph, index: GraphIndex): boolean {
   for (const slot of Object.keys(graph.outputs)) {
@@ -414,17 +391,7 @@ function isTier1Faithful(graph: ShaderGraph, index: GraphIndex): boolean {
     if (source.type === "textureSample" || source.type === "particleSubUV") {
       continue;
     }
-    // (b) the canonical magic param node for this slot.
-    const magic = FAITHFUL_OUTPUT_PARAM[slot];
-    if (
-      magic &&
-      source.type === "param" &&
-      typeof source.params.name === "string" &&
-      source.params.name === magic
-    ) {
-      continue;
-    }
-    return false; // wired through a non-magic network → not faithful
+    return false; // graph evaluation is required
   }
   return true;
 }
@@ -727,7 +694,7 @@ function resolveNumber(
 
 /**
  * Build the fixed-function descriptor for Tier 1 (techspec §6.1 Tier-1). Reads
- * the canonical Sprite-Master param names (Tint / Emissive / Opacity) and any
+ * the canonical controls only for the graphless Sprite Master builtin, and any
  * vertex-stage animated UV resolved by the analyzer.
  */
 function resolveFixed(
@@ -736,19 +703,21 @@ function resolveFixed(
   index: GraphIndex,
   vertexUvNodeIds: string[],
 ): MaterialFixedDescriptor {
-  const tintParam = graph.params.find(
-    (p) => p.name === "Tint" && p.type === "color",
-  );
+  const builtin = isSpriteMasterGraph(graph);
+  const tintParam =
+    builtin &&
+    graph.params.find((p) => p.name === "Tint" && p.type === "color");
   const tint: Vec4 = tintParam
     ? asVec4(resolveMaterialParamValue(graph, instance, "Tint"))
     : [1, 1, 1, 1];
 
-  const hasEmissive = graph.params.some((p) => p.name === "Emissive");
+  const hasEmissive =
+    builtin && graph.params.some((p) => p.name === "Emissive");
   const emissive = hasEmissive
     ? resolveNumber(graph, instance, "Emissive", 0)
     : 0;
 
-  const hasOpacity = graph.params.some((p) => p.name === "Opacity");
+  const hasOpacity = builtin && graph.params.some((p) => p.name === "Opacity");
   const opacity = hasOpacity ? resolveNumber(graph, instance, "Opacity", 1) : 1;
 
   const fixed: MaterialFixedDescriptor = {
@@ -882,7 +851,7 @@ export function compileMaterial(
         shaderId: SPRITE_MASTER_SHADER_ID,
         blend: graph.blend,
         bakeHash: materialDigest(graph, instance, mainTexUid),
-        // The bake evaluator folds these canonical controls into the texture.
+        // Authored graphs evaluate parameters in their nodes, without a global fold.
         fixed: resolveFixed(graph, instance, index, []),
         perParticleFeeds,
         diagnostics,
