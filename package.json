@@ -1,6 +1,6 @@
 {
   "name": "nixie-fx",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Open-source particle and VFX runtime and CLI for PixiJS and Three.js web games",
   "keywords": [
     "particles",
