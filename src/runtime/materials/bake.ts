@@ -1,3 +1,4 @@
+import { expandMaterialSubgraphs } from "./subgraphs";
 import type { Vec4 } from "../../engine/math";
 import { clamp, lerp, smoothstep } from "../../engine/math";
 import { numberOr } from "../../engine/particleModuleSettingUtils";
@@ -809,6 +810,7 @@ export function makeTexelEvaluator(
   instance: MaterialInstance,
   options: TexelEvaluatorOptions = {},
 ): (source: Vec4, uv: [number, number]) => Vec4 {
+  graph = expandMaterialSubgraphs(graph);
   const nodeById = new Map<string, MaterialNode>();
   for (const n of graph.nodes) nodeById.set(n.id, n);
   const edgeById = new Map<string, MaterialEdge>();
