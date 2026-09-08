@@ -422,7 +422,7 @@ uniform vec4 uDynamicParams;
 
 void main() {
   vUV = uv;
-  vColor = vec4(uParticleColor.rgb * uParticleColor.a, uParticleColor.a);
+  vColor = uParticleColor;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;

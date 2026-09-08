@@ -3,6 +3,9 @@ precision mediump float;
 
 varying vec2 vUV;
 varying vec4 vColor;
+#ifdef MATERIAL_WORLD_COLOR
+varying vec4 vMaterialWorldColor;
+#endif
 
 uniform sampler2D uTexture;
 uniform float uTime;
@@ -14,6 +17,26 @@ uniform vec2 uSheetTiles;
 uniform vec4 uSubUv;
 uniform float uSubUvFromAttr;
 uniform vec4 uDynamicParams;
+
+// Graph values and particle inputs are straight RGBA. Decode sampled textures
+// at the input boundary and premultiply only the completed fragment output.
+vec4 materialTextureSample(sampler2D source, vec2 uv) {
+  vec4 color = texture2D(source, uv);
+#ifdef MATERIAL_TEXTURE_PREMULTIPLIED
+  color.rgb = color.a > 0.0 ? color.rgb / color.a : vec3(0.0);
+#endif
+  return color;
+}
+
+vec4 materialEncodeOutput(vec4 color) {
+#ifdef MATERIAL_WORLD_COLOR
+  color *= MATERIAL_WORLD_COLOR;
+#endif
+#ifdef PREMULTIPLIED_ALPHA
+  color.rgb *= color.a;
+#endif
+  return color;
+}
 
 float materialLuminance(vec3 c) {
   return dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -77,7 +100,7 @@ float materialScalarNoise(vec2 uv, float scale, float seed, float outputMin, flo
 }
 
 vec4 materialSampleMain(vec2 uv) {
-  return texture2D(uTexture, uSubUv.xy + fract(uv) * uSubUv.zw);
+  return materialTextureSample(uTexture, uSubUv.xy + fract(uv) * uSubUv.zw);
 }
 
 vec4 materialSampleSubUvBlend(vec2 uv) {
@@ -96,6 +119,6 @@ vec4 materialSampleSubUvBlend(vec2 uv) {
     tiles.y - 1.0 - floor(nextFrame / tiles.x)
   );
   vec2 nextUv = (nextCell + local) / tiles;
-  return mix(current, texture2D(uTexture, nextUv), clamp(vColor.a, 0.0, 1.0));
+  return mix(current, materialTextureSample(uTexture, nextUv), clamp(vColor.a, 0.0, 1.0));
 }
 `;

@@ -120,7 +120,7 @@ describe("materialShader compiler — per-node samplers (M4)", () => {
     const { fragment, samplers } = compiled!;
     // The fragment samples a per-node uniform, NOT the MainTex helper.
     expect(fragment).toContain("uTex0");
-    expect(fragment).toContain("texture2D(uTex0");
+    expect(fragment).toContain("materialTextureSample(uTex0");
     expect(fragment).toContain("uniform sampler2D uTex0;");
     expect(fragment).not.toContain("materialSampleMain(vUV)");
     // ...and exposes that sampler in the binding list (node id → uniform → path).
@@ -178,7 +178,7 @@ describe("materialShader compiler — per-node samplers (M4)", () => {
     expect(samplers).toEqual([
       { nodeId: "mask", uniform: "uTex0", path: "fx/mask.png" },
     ]);
-    expect(fragment).toContain("texture2D(uTex0");
+    expect(fragment).toContain("materialTextureSample(uTex0");
   });
 
   it("a wired texture-param wins over the node's own params.tex (M3 phase-1)", () => {
@@ -317,6 +317,9 @@ precision mediump float;
 
 varying vec2 vUV;
 varying vec4 vColor;
+#ifdef MATERIAL_WORLD_COLOR
+varying vec4 vMaterialWorldColor;
+#endif
 
 uniform sampler2D uTexture;
 uniform float uTime;
@@ -328,6 +331,26 @@ uniform vec2 uSheetTiles;
 uniform vec4 uSubUv;
 uniform float uSubUvFromAttr;
 uniform vec4 uDynamicParams;
+
+// Graph values and particle inputs are straight RGBA. Decode sampled textures
+// at the input boundary and premultiply only the completed fragment output.
+vec4 materialTextureSample(sampler2D source, vec2 uv) {
+  vec4 color = texture2D(source, uv);
+#ifdef MATERIAL_TEXTURE_PREMULTIPLIED
+  color.rgb = color.a > 0.0 ? color.rgb / color.a : vec3(0.0);
+#endif
+  return color;
+}
+
+vec4 materialEncodeOutput(vec4 color) {
+#ifdef MATERIAL_WORLD_COLOR
+  color *= MATERIAL_WORLD_COLOR;
+#endif
+#ifdef PREMULTIPLIED_ALPHA
+  color.rgb *= color.a;
+#endif
+  return color;
+}
 
 float materialLuminance(vec3 c) {
   return dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -391,7 +414,7 @@ float materialScalarNoise(vec2 uv, float scale, float seed, float outputMin, flo
 }
 
 vec4 materialSampleMain(vec2 uv) {
-  return texture2D(uTexture, uSubUv.xy + fract(uv) * uSubUv.zw);
+  return materialTextureSample(uTexture, uSubUv.xy + fract(uv) * uSubUv.zw);
 }
 
 vec4 materialSampleSubUvBlend(vec2 uv) {
@@ -410,7 +433,7 @@ vec4 materialSampleSubUvBlend(vec2 uv) {
     tiles.y - 1.0 - floor(nextFrame / tiles.x)
   );
   vec2 nextUv = (nextCell + local) / tiles;
-  return mix(current, texture2D(uTexture, nextUv), clamp(vColor.a, 0.0, 1.0));
+  return mix(current, materialTextureSample(uTexture, nextUv), clamp(vColor.a, 0.0, 1.0));
 }
 
 void main(void) {
@@ -423,12 +446,12 @@ void main(void) {
   outColor.rgb = outColor.rgb * uFixedTint.rgb + emissiveColor.rgb;
   outColor.rgb *= (1.0 + max(0.0, uFixedEmissive));
   outColor.a = opacityValue * uFixedTint.a * uFixedOpacity;
-  outColor *= vColor;
-  gl_FragColor = outColor;
+  // Custom graph already owns particle color and opacity.
+  gl_FragColor = materialEncodeOutput(outColor);
 }
 `;
 
-  it("the empty graph compiles to the unchanged golden fragment + no samplers", () => {
+  it("the empty graph compiles to the straight-alpha golden fragment + no samplers", () => {
     const compiled = createMaterialPreviewFragment({
       artifact: artifact(),
       graph: graph({}),
@@ -514,9 +537,7 @@ describe("materialShader compiler — masked/opaque blends (I12-G)", () => {
       instance: INSTANCE,
     });
     // Mirrors the opaque encode: vColor multiply, then alpha pinned to 1.
-    expect(compiled!.fragment).toContain(
-      "outColor *= vColor;\n  outColor.a = 1.0;",
-    );
+    expect(compiled!.fragment).toContain("outColor.a = 1.0;");
     expect(compiled!.fragment).not.toContain(
       "outColor.a = opacityValue * uFixedTint.a * uFixedOpacity;",
     );
@@ -532,9 +553,7 @@ describe("materialShader compiler — masked/opaque blends (I12-G)", () => {
     expect(compiled!.fragment).toContain(
       "if (maskValue < uClipValue) discard;",
     );
-    expect(compiled!.fragment).toContain(
-      "outColor *= vColor;\n  outColor.a = 1.0;",
-    );
+    expect(compiled!.fragment).toContain("outColor.a = 1.0;");
   });
 
   it("normal keeps the inert vec4(1.0) mask clause byte-identical", () => {
@@ -549,7 +568,7 @@ describe("materialShader compiler — masked/opaque blends (I12-G)", () => {
     );
     // Soft alpha encode stays byte-identical: no forced-opaque write.
     expect(compiled!.fragment).toContain(
-      "outColor.a = opacityValue * uFixedTint.a * uFixedOpacity;\n  outColor *= vColor;",
+      "outColor.a = opacityValue * uFixedTint.a * uFixedOpacity;",
     );
     expect(compiled!.fragment).not.toContain("outColor.a = 1.0;");
   });
@@ -570,7 +589,7 @@ describe("materialShader node preview — per-node samplers", () => {
     expect(compiled!.samplers).toEqual([
       { nodeId: "tex", uniform: "uTex0", path: "fx/a.png" },
     ]);
-    expect(compiled!.fragment).toContain("texture2D(uTex0");
+    expect(compiled!.fragment).toContain("materialTextureSample(uTex0");
   });
 
   it("applies the selected output handle in the node preview fragment", () => {
