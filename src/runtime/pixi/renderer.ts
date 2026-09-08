@@ -16,7 +16,10 @@ import {
   type ParticleEffectEvent,
   normalizeParticleEffect,
   sampleInitialParticleColor,
-  sampleParticleMotion,
+  sampleParticleSimulationMotion,
+  particleSimulationToWorld,
+  particleSimulationDirectionToWorld,
+  isParticleLocalSpace,
   sampleParticleGradientAlpha,
   sampleParticleGradientColor,
   sampleParticleScalarValue,
@@ -1782,7 +1785,7 @@ function updateParticle(
   const seed = data[offset + 8] ?? 0.5;
   // Unified analytic motion (gravity/drag + velocity-over-lifetime), the same
   // evaluator events/collision/sub-emitters use, so they agree with the render.
-  const motion = sampleParticleMotion(
+  const motion = sampleParticleSimulationMotion(
     emitter,
     state,
     index,
@@ -1816,7 +1819,21 @@ function updateParticle(
     velocity,
   };
   applyPositionalMotionModules(emitter, motionModuleSample);
+  particleSimulationToWorld(
+    emitter,
+    state,
+    index,
+    world,
+    velocity,
+    emitterPosition,
+  );
   if (alignToVelocity) {
+    particleSimulationDirectionToWorld(
+      emitter,
+      state,
+      index,
+      pixiAnalyticVelocityScratch,
+    );
     pixiPreCollisionWorldScratch[0] = world[0];
     pixiPreCollisionWorldScratch[1] = world[1];
     pixiPreCollisionWorldScratch[2] = world[2];
@@ -1837,6 +1854,7 @@ function updateParticle(
     state.spawnDirectionData[runtimeVectorOffset + 1] ?? 1,
     state.spawnDirectionData[runtimeVectorOffset + 2] ?? 0,
   ];
+  particleSimulationDirectionToWorld(emitter, state, index, spawnDirection);
   const sizeSettingsX =
     emitter.mode === "billboard"
       ? emitter.billboard.sizeValue
@@ -1871,8 +1889,17 @@ function updateParticle(
     seed,
     loopAge,
   );
-  const sizeX = initSizeX * overLifeSizeX * sizeBySpeed;
-  const sizeY = initSizeY * overLifeSizeY * sizeBySpeed;
+  const localSpace = isParticleLocalSpace(state, index);
+  const sizeX =
+    initSizeX *
+    overLifeSizeX *
+    sizeBySpeed *
+    (localSpace ? emitter.spawn.scale[0] : 1);
+  const sizeY =
+    initSizeY *
+    overLifeSizeY *
+    sizeBySpeed *
+    (localSpace ? emitter.spawn.scale[1] : 1);
   const pixelsPerWorldUnit = Math.max(
     0.000001,
     projection.pixelsPerWorldUnit(world),
@@ -1970,7 +1997,14 @@ function updateParticle(
   particle.anchorY = anchorY;
   particle.scaleX = (pixelSizeX * renderScaleX) / Math.max(1, texture.width);
   particle.scaleY = (pixelSizeY * renderScaleY) / Math.max(1, texture.height);
+  let localRotation = 0;
+  if (localSpace && !alignDirection && !trail.stretchesAlongMotion) {
+    const localAxis: Vec3 = [1, 0, 0];
+    particleSimulationDirectionToWorld(emitter, state, index, localAxis);
+    localRotation = projectParticleDirectionAngle(world, localAxis, projection);
+  }
   const baseRotation =
+    localRotation +
     (data[offset + 9] ?? 0) +
     ageSeconds * (data[offset + 10] ?? 0) +
     particleRotationBySpeedOffset(emitter, speed, ageSeconds, seed, loopAge);

@@ -3,6 +3,7 @@ import {
   PARTICLE_INSTANCE_STRIDE,
   ParticleEffectRunner,
   normalizeParticleEffect,
+  sampleParticleMotion,
 } from "./particles";
 
 function loopingEffect(simulationSpace: "local" | "world" = "world") {
@@ -43,7 +44,17 @@ describe("ParticleEffectRunner runtime controls", () => {
     runner.update(0.1, 0.2);
     expect(runner.stats.emittedLastFrame).toBe(0);
     expect(runner.stats.activeParticles).toBe(1);
-    expect(runner.states[0]!.instanceData[0]).toBeCloseTo(4);
+    expect(runner.states[0]!.instanceData[0]).toBeCloseTo(0);
+    expect(
+      sampleParticleMotion(
+        effect.emitters[0]!,
+        runner.states[0]!,
+        0,
+        0.1,
+        0.2,
+        [4, 0, 0],
+      ).position[0],
+    ).toBeCloseTo(4.2);
 
     runner.update(0.5, 0.7);
     expect(runner.isActive).toBe(false);

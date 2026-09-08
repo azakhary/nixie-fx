@@ -33,7 +33,10 @@ import {
   sampleInitialParticleColorInto,
   sampleParticleGradientAlpha,
   sampleParticleGradientColor,
-  sampleParticleMotion,
+  sampleParticleSimulationMotion,
+  particleSimulationToWorld,
+  particleSimulationDirectionToWorld,
+  isParticleLocalSpace,
   sampleParticleScalarValue,
   resolveParticleDepthWrite,
   type CompiledParticleScalarValue,
@@ -877,7 +880,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     const ageSeconds = Math.max(0, age);
     const loopAge = clamp(state.age / Math.max(0.001, emitter.duration), 0, 1);
     const seed = data[offset + 8] ?? 0.5;
-    const motion = sampleParticleMotion(
+    const motion = sampleParticleSimulationMotion(
       emitter,
       state,
       particleIndex,
@@ -909,7 +912,21 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     // difference below, saving its second motion evaluation (I13-F contract:
     // collision excluded).
     applyPositionalMotionModules(emitter, motionModuleSample);
+    particleSimulationToWorld(
+      emitter,
+      state,
+      particleIndex,
+      world,
+      velocity,
+      this.position,
+    );
     if (alignToVelocity) {
+      particleSimulationDirectionToWorld(
+        emitter,
+        state,
+        particleIndex,
+        this.analyticVelocityScratch,
+      );
       this.preCollisionWorldScratch[0] = world[0];
       this.preCollisionWorldScratch[1] = world[1];
       this.preCollisionWorldScratch[2] = world[2];
@@ -1060,13 +1077,18 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     sample.loopAge = loopAge;
     sample.start = start;
     sample.seed = seed;
-    sample.width = size.x;
-    sample.height = size.y;
-    sample.depthScale = size.z;
+    const localSpace = isParticleLocalSpace(state, particleIndex);
+    sample.width = size.x * (localSpace ? emitter.spawn.scale[0] : 1);
+    sample.height = size.y * (localSpace ? emitter.spawn.scale[1] : 1);
+    sample.depthScale = size.z * (localSpace ? emitter.spawn.scale[2] : 1);
     sample.depth = world[2];
     sample.rotation[0] = rotationX;
     sample.rotation[1] = rotationY;
-    sample.rotation[2] = rotationZ;
+    sample.rotation[2] =
+      rotationZ +
+      (localSpace && emitter.render.alignAxis === "screen"
+        ? (emitter.spawn.rotation[2] * Math.PI) / 180
+        : 0);
     sample.color.copy(color);
     sample.shaderColor[0] = renderColor[0];
     sample.shaderColor[1] = renderColor[1];
@@ -1129,6 +1151,14 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
         state.spawnDirectionData[offset + 1] ?? 1,
         state.spawnDirectionData[offset + 2] ?? 0,
       );
+      const direction: Vec3 = [out.x, out.y, out.z];
+      particleSimulationDirectionToWorld(
+        emitter,
+        state,
+        particleIndex,
+        direction,
+      );
+      out.set(...direction);
       return normalizeOr(out, DEFAULT_NORMAL);
     }
     if (emitter.render.alignAxis === "spawnDirection") {
@@ -1138,6 +1168,14 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
         state.spawnDirectionData[offset + 1] ?? 1,
         state.spawnDirectionData[offset + 2] ?? 0,
       );
+      const direction: Vec3 = [out.x, out.y, out.z];
+      particleSimulationDirectionToWorld(
+        emitter,
+        state,
+        particleIndex,
+        direction,
+      );
+      out.set(...direction);
       return normalizeOr(out, DEFAULT_NORMAL);
     }
     out.set(

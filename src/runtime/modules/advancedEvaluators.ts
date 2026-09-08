@@ -12,7 +12,8 @@ import {
   lerpVec4SrgbRgbInLinear,
   sampleParticleGradientAlpha,
   sampleParticleGradientColor,
-  sampleParticleMotion,
+  sampleParticleSimulationMotion,
+  particleSimulationToWorld,
   sampleParticleScalarValue,
   type ParticleEmitterDefinition,
   type ParticleEmitterRuntimeState,
@@ -440,7 +441,7 @@ function evaluateDisplacedPosition(
     1,
     Math.max(0, clampedAge / Math.max(0.001, life)),
   );
-  sampleParticleMotion(
+  sampleParticleSimulationMotion(
     emitter,
     state,
     particleIndex,
@@ -457,6 +458,14 @@ function evaluateDisplacedPosition(
   sampleOut.ageSeconds = clampedAge;
   sampleOut.timeSeconds = timeSeconds;
   applyPositionalMotionModules(emitter, sampleOut); // force → external → noise; NO collision
+  particleSimulationToWorld(
+    emitter,
+    state,
+    particleIndex,
+    motionOut.position,
+    motionOut.velocity,
+    currentEmitterPosition,
+  );
 }
 
 export function sampleParticleModuleColor(
