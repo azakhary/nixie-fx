@@ -739,7 +739,15 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     view.material.depthTest = emitter.render.depthTest;
     const depthWrite = materialOwnsBlend
       ? true
-      : resolveParticleDepthWrite(emitter.render);
+      : resolveParticleDepthWrite({
+          ...emitter.render,
+          blend:
+            effectiveBlend === "additive"
+              ? "additive"
+              : effectiveBlend === "premultiplied"
+                ? "premultiplied"
+                : "alpha",
+        });
     const blending = threeBlendingForEffectiveBlend(effectiveBlend);
     const premultiplied = effectiveBlend === "premultiplied";
     view.material.depthWrite = depthWrite;
@@ -1247,7 +1255,15 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
         material.transparent = false;
       } else {
         material.depthWrite = resolveParticleDepthWrite(
-          emitter.render,
+          {
+            ...emitter.render,
+            blend:
+              effectiveBlend === "additive"
+                ? "additive"
+                : effectiveBlend === "premultiplied"
+                  ? "premultiplied"
+                  : "alpha",
+          },
           sample.alpha,
         );
         material.blending = threeBlendingForEffectiveBlend(effectiveBlend);
@@ -1255,8 +1271,8 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
         material.opacity = sample.alpha;
         material.transparent =
           sample.alpha < 1 ||
-          emitter.render.blend === "additive" ||
-          emitter.render.blend === "premultiplied";
+          effectiveBlend === "additive" ||
+          effectiveBlend === "premultiplied";
       }
       if ("emissive" in material) {
         material.emissive.copy(sample.color);
@@ -1817,10 +1833,18 @@ function applyThreeShaderSample(
     material.transparent =
       !opacityIsConstantOne ||
       sample.alpha < 1 ||
-      emitter.render.blend === "additive" ||
-      emitter.render.blend === "premultiplied";
+      effectiveBlend === "additive" ||
+      effectiveBlend === "premultiplied";
     material.depthWrite = resolveParticleDepthWrite(
-      emitter.render,
+      {
+        ...emitter.render,
+        blend:
+          effectiveBlend === "additive"
+            ? "additive"
+            : effectiveBlend === "premultiplied"
+              ? "premultiplied"
+              : "alpha",
+      },
       opacityIsConstantOne ? sample.alpha : 0,
     );
     material.blending = threeBlendingForEffectiveBlend(effectiveBlend);

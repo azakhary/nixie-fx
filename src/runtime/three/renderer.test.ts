@@ -490,7 +490,49 @@ describe("ThreeVfxRenderer transform MVP", () => {
     expect(translucent.depthWrite).toBe(false);
   });
 
-  it("sets premultipliedAlpha on a Tier-2 ShaderMaterial premultiplied emitter (I13-A)", () => {
+  it.each(["alpha", "additive", "premultiplied"] as const)(
+    "renders additive custom materials independently of texture blend %s",
+    (blend) => {
+      for (const graph of [
+        {
+          ...createSpriteMasterGraph(),
+          id: "custom-fixed",
+          blend: "add" as const,
+        },
+        { ...particleColorAlphaMaterialGraph(), blend: "add" as const },
+      ]) {
+        const material = createMaterialInstance(graph, "independent-blend");
+        const renderer = new ThreeVfxRenderer({
+          scene: new Scene(),
+          camera: createCamera(),
+          materialGraphProvider: () => graph,
+        });
+        const instance = renderer.createEffect(
+          normalizeParticleEffect({
+            id: "independent-blend",
+            targetProfile: "three-world-3d",
+            emitters: [
+              {
+                id: "emitter",
+                ...singleBurstEmitter({ color: [1, 1, 1, 1] }),
+                modules: { color: false },
+                render: { material, blend, depthWrite: true },
+              },
+            ],
+          }),
+        );
+        renderer.update(1 / 60);
+        const rendered = firstParticleAnyMaterial(instance) as ShaderMaterial;
+        expect(rendered.blending).toBe(AdditiveBlending);
+        expect(rendered.premultipliedAlpha).toBe(false);
+        expect(rendered.transparent).toBe(true);
+        expect(rendered.depthWrite).toBe(false);
+        renderer.destroy();
+      }
+    },
+  );
+
+  it("uses a Tier-2 graph blend instead of the texture premultiplied setting", () => {
     const graph = particleColorAlphaMaterialGraph();
     const material = createMaterialInstance(graph, "premult-tier2");
     const renderer = new ThreeVfxRenderer({
@@ -518,11 +560,8 @@ describe("ThreeVfxRenderer transform MVP", () => {
     const rendered = firstParticleAnyMaterial(instance);
     expect(rendered).toBeInstanceOf(ShaderMaterial);
     const shader = rendered as ShaderMaterial;
-    // Material is `normal` (not authoritative), so the premultiplied emitter
-    // blend flows through: normal blending, premultiplied, transparent even at
-    // particle alpha 1.
     expect(shader.blending).toBe(NormalBlending);
-    expect(shader.premultipliedAlpha).toBe(true);
+    expect(shader.premultipliedAlpha).toBe(false);
     expect(shader.transparent).toBe(true);
   });
 

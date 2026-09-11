@@ -57,7 +57,6 @@ import {
   createSpriteMasterGraph,
   resolveEffectiveMainTexPath,
   resolveEffectiveParticleBlend,
-  materialBlendOverridesEmitter,
   SPRITE_MASTER_SHADER_ID,
   type EffectiveParticleBlend,
   type MaterialInstance,
@@ -991,9 +990,10 @@ export class PixiVfxEffectInstance {
         artifact,
       );
     }
-    // Tier 0 BAKE supersedes per-emitter opacity derivation (the material's
-    // own opacity output is baked in); other tiers keep the legacy path. A
-    // blocked material never renders with a legacy/default shader.
+    // Custom graphs own opacity and blending in every tier. Sprite Master
+    // remains the built-in texture workflow with emitter-owned settings.
+    const customMaterial =
+      !!material && material.shaderId !== SPRITE_MASTER_SHADER_ID;
     const texture =
       !materialBlock &&
       material &&
@@ -1006,16 +1006,18 @@ export class PixiVfxEffectInstance {
             artifact,
           )
         : sourceTexture;
-    let renderedTexture = materialBlock
-      ? texture
-      : artifact?.tier === "tier0-bake"
+    let renderedTexture =
+      materialBlock || customMaterial
         ? texture
-        : this.resolveDerivedTexture(texture, emitter);
+        : artifact?.tier === "tier0-bake"
+          ? texture
+          : this.resolveDerivedTexture(texture, emitter);
     // I13-A: a texture-only premultiplied emitter binds an already-premultiplied
     // source (no upload multiply, no normal→normal-npm swap). Layered AFTER the
     // opacity derivation so both compose.
     if (
       !materialBlock &&
+      !customMaterial &&
       artifact?.tier !== "tier0-bake" &&
       emitter.render.blend === "premultiplied"
     ) {
@@ -1061,15 +1063,14 @@ export class PixiVfxEffectInstance {
           }
         : null;
     const materialUvKey = materialUvRenderKey(materialUv);
-    // Material-authoritative blends (masked/opaque) fork the batch key; the
-    // legacy emitter-blend axis above stays byte-identical for normal/add.
+    // Include every custom graph blend so live Normal/Additive changes
+    // rebuild the batch even when the texture blend has not changed.
     const effectiveBlend = resolveEffectiveParticleBlend(
       emitter.render.blend,
-      artifact?.blend ?? null,
+      customMaterial ? artifact?.blend : null,
     );
-    const materialBlendKey = materialBlendOverridesEmitter(artifact?.blend)
-      ? `materialBlend:${effectiveBlend}`
-      : "";
+    const materialBlendKey =
+      customMaterial && artifact ? `materialBlend:${effectiveBlend}` : "";
     // The trail container can use its own authored texture. When unset (the
     // default), trails reuse the particle texture. Missing trail textures fall
     // back to the particle texture and are reported through missing-texture

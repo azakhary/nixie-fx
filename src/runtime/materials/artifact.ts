@@ -76,9 +76,8 @@ export interface MaterialFixedDescriptor {
   /** Constant opacity multiplier (0..1). */
   opacity: number;
   /**
-   * Blend state (mirrors the graph blend). `masked`/`opaque` override the
-   * emitter's render blend; `normal`/`add` leave the emitter the final say
-   * (resolve via `resolveEffectiveParticleBlend`, I12-G).
+   * Blend state owned by the custom graph, resolved through
+   * `resolveEffectiveParticleBlend` independently of texture settings.
    */
   blend: MaterialBlend;
   /** Vertex-stage UV scroll (Panner), if the graph animates UV via time. */

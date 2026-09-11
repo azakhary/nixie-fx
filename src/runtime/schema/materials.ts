@@ -71,8 +71,8 @@ export type MaterialParamScope = "per-material" | "global";
 
 /**
  * Blend states the renderer can realize (renderer key axis). `normal`/`add`
- * leave the emitter's render blend authoritative (legacy contract);
- * `masked`/`opaque` are material-authoritative and override it (I12-G).
+ * own the blend state whenever a custom material is active, as do
+ * `masked`/`opaque`. Texture-only emitters keep their render blend.
  */
 export type MaterialBlend = "normal" | "add" | "masked" | "opaque";
 
@@ -504,7 +504,7 @@ function normalizeBlend(value: unknown): MaterialBlend {
     : "normal";
 }
 
-/** Material blends that override the emitter's render blend (I12-G). */
+/** Cutout/opaque blends that bypass translucent rendering and write depth. */
 export function materialBlendOverridesEmitter(
   blend: MaterialBlend | EffectiveParticleBlend | null | undefined,
 ): blend is "masked" | "opaque" {
@@ -512,9 +512,8 @@ export function materialBlendOverridesEmitter(
 }
 
 /**
- * The effective GPU blend for a particle draw. `masked`/`opaque` materials own
- * the blend state (Unreal parity); `normal`/`add` keep the emitter's
- * `render.blend` authoritative so legacy effects render byte-identical. Both
+ * The active custom material owns the GPU blend for a particle draw.
+ * Without a custom material, the texture workflow owns the blend. Both
  * backends must resolve through here — no ad-hoc per-renderer branches.
  */
 export type EffectiveParticleBlend =
@@ -524,9 +523,9 @@ export function resolveEffectiveParticleBlend(
   emitterBlend: "alpha" | "additive" | "premultiplied",
   materialBlend: MaterialBlend | null | undefined,
 ): EffectiveParticleBlend {
-  return materialBlendOverridesEmitter(materialBlend)
-    ? materialBlend
-    : emitterBlend;
+  if (materialBlend === "normal") return "alpha";
+  if (materialBlend === "add") return "additive";
+  return materialBlend ?? emitterBlend;
 }
 
 export function normalizeMaterialRenderFace(

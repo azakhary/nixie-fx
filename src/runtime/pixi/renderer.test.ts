@@ -2362,9 +2362,8 @@ describe("Pixi VFX runtime renderer", () => {
 
     // Legacy pin: a plain additive emitter keeps the overbright alpha boost.
     expect(sampleAlpha(null)).toBeGreaterThan(0.6);
-    // A normal-blend material keeps the emitter's additive blend authoritative
-    // (effective blend stays additive), so the boost still applies.
-    expect(sampleAlpha(emissiveGraph("normal"))).toBeGreaterThan(0.6);
+    // A normal material ignores the texture workflow's additive boost.
+    expect(sampleAlpha(emissiveGraph("normal"))).toBeCloseTo(0.5, 5);
     // Masked/opaque materials override the emitter blend (I12-G): the additive
     // boost must NOT apply even though render.blend is "additive".
     expect(sampleAlpha(emissiveGraph("masked"))).toBeCloseTo(0.5, 5);

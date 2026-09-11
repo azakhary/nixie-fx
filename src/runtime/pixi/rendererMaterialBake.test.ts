@@ -5,10 +5,17 @@ import { createPixiVfx2dProjection } from "./projection";
 import { PixiVfxEffectInstance } from "./renderer";
 import type { PixiVfxFallbackTextures } from "./types";
 
-const { bakeTextureRef, createMaterialBakeTextureMock } = vi.hoisted(() => {
+const {
+  bakeTextureRef,
+  createMaterialBakeTextureMock,
+  deriveAlphaMock,
+  premultiplyMock,
+} = vi.hoisted(() => {
   const bakeTextureRef: { current: unknown } = { current: null };
   return {
     bakeTextureRef,
+    deriveAlphaMock: vi.fn(() => null),
+    premultiplyMock: vi.fn((source: unknown) => source),
     createMaterialBakeTextureMock: vi.fn(() => bakeTextureRef.current),
   };
 });
@@ -18,6 +25,8 @@ vi.mock("./material", async (importOriginal) => {
   return {
     ...actual,
     createMaterialBakeTexture: createMaterialBakeTextureMock,
+    createDerivedAlphaTexture: deriveAlphaMock,
+    createPremultipliedSourceTexture: premultiplyMock,
   };
 });
 
@@ -61,7 +70,61 @@ describe("Pixi renderer material fallback bakes", () => {
 });
 
 describe("Pixi renderer material blend modes (I12-G)", () => {
-  it("masked/opaque override the emitter blend and fork the container key", () => {
+  it("keeps texture opacity and source-alpha settings out of a custom material", () => {
+    deriveAlphaMock.mockClear();
+    premultiplyMock.mockClear();
+    const graph = pannerTier1Graph();
+    const render = {
+      blend: "premultiplied",
+      opacitySource: "red",
+      opacityInvert: true,
+    };
+    const instance = new PixiVfxEffectInstance({
+      effect: materialEmitterEffect({ id: "mi", shaderId: graph.id }, render),
+      materialGraphProvider: () => graph,
+      fallbackTextures: fallbackTextures(Texture.WHITE),
+      projection: createPixiVfx2dProjection({ pixelsPerUnit: 100 }),
+      seed: 1,
+      timeSeconds: 0,
+    });
+    instance.update(0.01, 0.01);
+    expect(deriveAlphaMock).not.toHaveBeenCalled();
+    expect(premultiplyMock).not.toHaveBeenCalled();
+    instance.updateDefinition(materialEmitterEffect(null, render));
+    instance.update(0.01, 0.02);
+    expect(deriveAlphaMock).toHaveBeenCalledWith(Texture.WHITE, "red", true);
+    expect(premultiplyMock).toHaveBeenCalled();
+    instance.destroy();
+  });
+
+  it.each(["alpha", "additive", "premultiplied"] as const)(
+    "restores texture blend %s after removing a custom material",
+    (blend) => {
+      const graph = pannerTier1Graph();
+      graph.blend = "add";
+      const instance = new PixiVfxEffectInstance({
+        effect: materialEmitterEffect(
+          { id: "mi", shaderId: graph.id },
+          { blend },
+        ),
+        materialGraphProvider: () => graph,
+        fallbackTextures: fallbackTextures(Texture.WHITE),
+        projection: createPixiVfx2dProjection({ pixelsPerUnit: 100 }),
+        seed: 1,
+        timeSeconds: 0,
+      });
+      instance.update(0.01, 0.01);
+      expect(particleContainer(instance).blendMode).toBe("add");
+      instance.updateDefinition(materialEmitterEffect(null, { blend }));
+      instance.update(0.01, 0.02);
+      expect(particleContainer(instance).blendMode).toBe(
+        blend === "additive" ? "add" : "normal",
+      );
+      instance.destroy();
+    },
+  );
+
+  it("custom graph blend changes fork the container key independently of texture blend", () => {
     // Tier-1 graph (animated UV pan): shaderId stays "sprite-master" and no
     // bakeHash exists, so only the effective-blend key axis can fork the view.
     const graph = pannerTier1Graph();
@@ -81,8 +144,14 @@ describe("Pixi renderer material blend modes (I12-G)", () => {
 
     instance.update(0.01, 0.01);
     const normalContainer = particleContainer(instance);
-    // normal/add graph blends keep the emitter's additive blend authoritative.
-    expect(normalContainer.blendMode).toBe("add");
+    expect(normalContainer.blendMode).toBe("normal");
+
+    graph.blend = "add";
+    instance.setMaterialGraphProvider(provider);
+    instance.update(0.01, 0.015);
+    const additiveContainer = particleContainer(instance);
+    expect(additiveContainer).not.toBe(normalContainer);
+    expect(additiveContainer.blendMode).toBe("add");
 
     graph.blend = "opaque";
     instance.setMaterialGraphProvider(provider);
