@@ -4492,11 +4492,11 @@ export interface ParticleMotionResult {
  * orbital / radial, gated by `modules.velocityOverLifetime`) on top of the
  * particle's spawn state.
  *
- * `currentEmitterPosition` is the emitter's CURRENT world position (the runner
- * threads in `this.position`). It is only consulted for local-space orbital /
- * radial centers so a moving emitter carries the orbit center; world space uses
- * the per-particle spawn origin instead. When omitted, the spawn origin is used
- * for both (correct for world space and a stable fallback for local space).
+ * `currentEmitterPosition` is the CURRENT effect world position (the runner
+ * threads in `this.position`). Orbital motion adds the emitter spawn position
+ * to this origin in both velocity spaces; local-space radial motion also uses
+ * this current effect origin. When omitted, the per-particle spawn effect
+ * origin provides a stable fallback.
  */
 export function sampleParticleMotion(
   emitter: ParticleEmitterDefinition,
@@ -4662,8 +4662,8 @@ function applyVelocityOverLifetime(
   position[1] += lin[1] * ageSeconds * integratedSpeedModifier;
   position[2] += lin[2] * ageSeconds * integratedSpeedModifier;
 
-  // 2) CENTER for orbital / radial. World space anchors on the per-particle
-  // spawn origin; local space follows the current emitter position.
+  // 2) Preserve the radial center: world space anchors on the per-particle
+  // spawn effect origin; local space follows the current effect position.
   const runtimeOffset = particleIndex * PARTICLE_RUNTIME_VECTOR_STRIDE;
   const originX = local
     ? (currentEmitterPosition?.[0] ??
@@ -4739,6 +4739,27 @@ function applyVelocityOverLifetime(
     loopAgeT,
   );
   if (wx !== 0 || wy !== 0 || wz !== 0) {
+    // Motion positions are world coordinates, including for local simulation.
+    // The orbit belongs to the individual emitter, not the effect origin.
+    // Velocity space controls the offset axes, not which origin to orbit.
+    const centerX =
+      (currentEmitterPosition?.[0] ??
+        state.spawnOriginData[runtimeOffset] ??
+        0) +
+      emitter.spawn.position[0] +
+      off[0];
+    const centerY =
+      (currentEmitterPosition?.[1] ??
+        state.spawnOriginData[runtimeOffset + 1] ??
+        0) +
+      emitter.spawn.position[1] +
+      off[1];
+    const centerZ =
+      (currentEmitterPosition?.[2] ??
+        state.spawnOriginData[runtimeOffset + 2] ??
+        0) +
+      emitter.spawn.position[2] +
+      off[2];
     let relX = position[0] - centerX;
     let relY = position[1] - centerY;
     let relZ = position[2] - centerZ;
