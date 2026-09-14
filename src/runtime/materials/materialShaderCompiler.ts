@@ -378,9 +378,9 @@ void main(void) {
         return "vec4(vUV, 0.0, 0.0)";
       case "tilingOffset": {
         const uv = input("uv", "vec4(vUV, 0.0, 0.0)");
-        const tile = this.constVec4(p.tile, [1, 1, 0, 0]);
-        const offset = this.constVec4(p.offset);
-        return `vec4((${uv}).xy * max((${tile}).xy, vec2(0.000001)) + (${offset}).xy, 0.0, 0.0)`;
+        const tile = input("tile", this.constVec4(p.tile, [1, 1, 0, 0]));
+        const offset = input("offset", this.constVec4(p.offset));
+        return `vec4((${uv}).xy * (${tile}).xy + (${offset}).xy, 0.0, 0.0)`;
       }
       case "panner": {
         const uv = input("uv", "vec4(vUV, 0.0, 0.0)");

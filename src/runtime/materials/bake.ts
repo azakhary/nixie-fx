@@ -446,14 +446,9 @@ function evalNodeInner(
     }
     case "tilingOffset": {
       const uv = inp("uv", [ctx.uv[0], ctx.uv[1], 0, 0]);
-      const tile = toVec4(p.tile as Vec4);
-      const offset = toVec4(p.offset as Vec4);
-      return [
-        uv[0] * (tile[0] || 1) + offset[0],
-        uv[1] * (tile[1] || 1) + offset[1],
-        0,
-        0,
-      ];
+      const tile = inp("tile", toVec4((p.tile ?? [1, 1, 0, 0]) as Vec4));
+      const offset = inp("offset", toVec4(p.offset as Vec4));
+      return [uv[0] * tile[0] + offset[0], uv[1] * tile[1] + offset[1], 0, 0];
     }
     case "multiply":
       return mulVec4(inp("a", [1, 1, 1, 1]), inp("b", [1, 1, 1, 1]));
