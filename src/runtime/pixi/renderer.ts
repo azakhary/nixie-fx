@@ -74,6 +74,7 @@ import { createPixiVfxProceduralTextures } from "./proceduralTextures";
 import {
   canRenderTier2ParticleContainerShader,
   createTier2ParticleMaterialShader,
+  createMaterialPreviewFragment,
   updateTier2ParticleMaterialShaderDynamicParams,
   updateTier2ParticleMaterialShaderTime,
 } from "./materialShader";
@@ -221,6 +222,7 @@ interface ResolvedEmitterRender {
   materialRenderFace?: MaterialRenderFace;
   missingRef?: VfxTextureAssetRef;
   missingTrailRef?: VfxTextureAssetRef;
+  missingMaterialTextureRefs: VfxTextureAssetRef[];
 }
 
 interface ResolvedEmitterMaterial {
@@ -234,6 +236,7 @@ interface ResolvedTier2MaterialRender {
   instance: MaterialInstance;
   artifact: MaterialArtifact;
   textureSheetTiles: [number, number];
+  samplerTextures: ReadonlyMap<string, Texture>;
 }
 
 interface UvQuad {
@@ -289,6 +292,10 @@ export class PixiVfxEffectInstance {
   /** Premultiplied-source textures (I13-A), cached by source uid. */
   private readonly premultipliedTextures = new Map<string | number, Texture>();
   /** Compiled material artifacts, cached by materialDigest (graph+overrides+mainTexUid). */
+  private readonly materialSamplerPaths = new WeakMap<
+    MaterialArtifact,
+    string[]
+  >();
   private readonly materialArtifacts = new Map<string, MaterialArtifact>();
   /** The built-in "Sprite Master" graph — the implicit material of every emitter. */
   private readonly spriteMasterGraph: ShaderGraph = createSpriteMasterGraph();
@@ -772,6 +779,7 @@ export class PixiVfxEffectInstance {
     for (let i = 0; i < this.effect.emitters.length; i++) {
       const emitter = this.effect.emitters[i]!;
       const render = this.resolveEmitterRender(emitter);
+      missingTextureRefs.push(...render.missingMaterialTextureRefs);
       if (render.missingRef) missingTextureRefs.push(render.missingRef);
       if (render.missingTrailRef)
         missingTextureRefs.push(render.missingTrailRef);
@@ -1046,6 +1054,40 @@ export class PixiVfxEffectInstance {
       !materialBlock && material && artifact
         ? materialAnimatedUvFromArtifact(artifact)
         : null;
+    const samplerTextures = new Map<string, Texture>();
+    const missingMaterialTextureRefs: VfxTextureAssetRef[] = [];
+    const samplerKeys: string[] = [];
+    if (
+      material &&
+      resolvedMaterial?.graph &&
+      artifact?.tier === "tier2-shader"
+    ) {
+      let paths = this.materialSamplerPaths.get(artifact);
+      if (!paths) {
+        const compiled = createMaterialPreviewFragment({
+          graph: resolvedMaterial.graph,
+          instance: material,
+          artifact,
+        });
+        paths = [
+          ...new Set(compiled?.samplers.map((binding) => binding.path) ?? []),
+        ];
+        this.materialSamplerPaths.set(artifact, paths);
+      }
+      for (const path of paths) {
+        const ref = createPixiVfxTextureRef(path);
+        const resolved = this.textureProvider?.getTexture(ref);
+        if (resolved) samplerTextures.set(path, resolved);
+        else missingMaterialTextureRefs.push(ref);
+        samplerKeys.push(
+          JSON.stringify([
+            path,
+            resolved?.uid ?? null,
+            resolved?.source.uid ?? null,
+          ]),
+        );
+      }
+    }
     const tier2Material =
       !materialBlock &&
       material &&
@@ -1058,6 +1100,7 @@ export class PixiVfxEffectInstance {
             instance: material,
             artifact,
             textureSheetTiles: textureSheetTiles(emitter),
+            samplerTextures,
           }
         : null;
     const materialUvKey = materialUvRenderKey(materialUv);
@@ -1108,12 +1151,14 @@ export class PixiVfxEffectInstance {
         mainKey,
         ...renderKeyParts,
         materialKey,
+        ...samplerKeys,
         materialBlendKey,
         materialUvKey,
         trailKey,
       ]
         .filter(Boolean)
         .join("|"),
+      missingMaterialTextureRefs,
       texture: renderedTexture,
       trailTexture,
       frameTextures,
@@ -2413,6 +2458,7 @@ function createEmitterTier2MaterialShader(
     artifact: material.artifact,
     texture,
     textureSheetTiles: material.textureSheetTiles,
+    samplerTextures: material.samplerTextures,
   });
 }
 

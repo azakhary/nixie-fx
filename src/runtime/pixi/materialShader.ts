@@ -37,6 +37,8 @@ export interface Tier2ParticleMaterialShaderOptions {
   artifact: MaterialArtifact;
   texture?: Texture;
   textureSheetTiles?: [number, number];
+  /** Resolved graph textures keyed by authored asset path. Missing assets use white. */
+  samplerTextures?: ReadonlyMap<string, Texture>;
 }
 
 /**
@@ -86,6 +88,7 @@ export function createTier2ParticleMaterialShader({
   artifact,
   texture,
   textureSheetTiles,
+  samplerTextures,
 }: Tier2ParticleMaterialShaderOptions): PixiShader | null {
   if (!canRenderTier2ParticleContainerShader(artifact)) return null;
   const compiled = createMaterialPreviewFragment({ artifact, graph, instance });
@@ -96,16 +99,12 @@ export function createTier2ParticleMaterialShader({
     Math.max(1, Math.round(textureSheetTiles?.[0] ?? 1)),
     Math.max(1, Math.round(textureSheetTiles?.[1] ?? 1)),
   ];
-  // Decision D3 (phase-1, honest): the compiler now emits one `uTexN` sampler
-  // per node-picked texture, but the particle renderer has no per-node asset →
-  // Texture resolution path yet, so bind each `uTexN` to the emitter MainTex so
-  // the shader links instead of failing. Per-node particle textures are deferred
-  // (surfaced via `tier2ParticleSamplerDeferralDiagnostics`). A graph with NO
-  // per-node textures adds NO extra resources → byte-identical to before.
   const mainSource = (texture ?? Texture.WHITE).source;
   const perNodeSamplers: Record<string, typeof mainSource> = {};
   for (const binding of compiled.samplers) {
-    perNodeSamplers[binding.uniform] = mainSource;
+    perNodeSamplers[binding.uniform] = (
+      samplerTextures?.get(binding.path) ?? Texture.WHITE
+    ).source;
   }
   return Shader.from({
     gl: {
