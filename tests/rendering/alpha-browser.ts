@@ -219,7 +219,11 @@ async function run() {
     for (const sample of cases) {
       const g = graph(
         sample.textured,
-        mode === "opaque" || mode === "masked" ? mode : "normal",
+        mode === "opaque" || mode === "masked"
+          ? mode
+          : mode === "additive"
+            ? "add"
+            : "normal",
       );
       const instance = createMaterialInstance(g, "alpha-test");
       const artifact = compileMaterial(g, instance);
