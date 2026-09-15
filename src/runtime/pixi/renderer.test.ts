@@ -1799,7 +1799,11 @@ describe("Pixi VFX runtime renderer", () => {
           outputs: { baseColor: "out" },
         });
         const material = createMaterialInstance(graph, "multi");
-        const textures = new Map([["a.png", a]]);
+        material.mainTex = { type: "texture", id: "main", path: "main.png" };
+        const textures = new Map([
+          ["a.png", a],
+          ["main.png", c],
+        ]);
         const instance = new PixiVfxEffectInstance({
           effect: materialEmitterEffect(material),
           materialGraphProvider: () => graph,
@@ -1808,6 +1812,7 @@ describe("Pixi VFX runtime renderer", () => {
         });
         const resources = () =>
           particleContainers(instance)[1]!.shader!.resources;
+        expect(resources().uTexture).toBe(c.source);
         expect(resources().uTex0).toBe(a.source);
         expect(resources().uTex1).toBe(Texture.WHITE.source);
         expect(
@@ -1823,6 +1828,15 @@ describe("Pixi VFX runtime renderer", () => {
         const stable = particleContainers(instance)[1];
         instance.update(0.01, 0.02);
         expect(particleContainers(instance)[1]).toBe(stable);
+        // Replacing an already-loaded asset at the same path refreshes only
+        // its binding; the other node keeps its assigned image.
+        textures.set("b.png", c);
+        instance.update(0.01, 0.03);
+        expect(resources().uTex0).toBe(a.source);
+        expect(resources().uTex1).toBe(c.source);
+        textures.set("b.png", b);
+        instance.update(0.01, 0.04);
+        expect(resources().uTex1).toBe(b.source);
         textures.set("c.png", c);
         material.paramOverrides.Second = "c.png";
         instance.updateDefinition(materialEmitterEffect(material));

@@ -293,11 +293,12 @@ export class PixiVfxEffectInstance {
   private readonly derivedTextures = new Map<string, Texture>();
   /** Premultiplied-source textures (I13-A), cached by source uid. */
   private readonly premultipliedTextures = new Map<string | number, Texture>();
-  /** Compiled material artifacts, cached by materialDigest (graph+overrides+mainTexUid). */
+  /** Cache compiled sampler paths; texture availability is resolved each update. */
   private readonly materialSamplerPaths = new WeakMap<
     MaterialArtifact,
     string[]
   >();
+  /** Compiled material artifacts, cached by materialDigest (graph+overrides+mainTexUid). */
   private readonly materialArtifacts = new Map<string, MaterialArtifact>();
   /** The built-in "Sprite Master" graph — the implicit material of every emitter. */
   private readonly spriteMasterGraph: ShaderGraph = createSpriteMasterGraph();
