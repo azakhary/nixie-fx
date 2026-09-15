@@ -1192,7 +1192,17 @@ describe("particle effect normalization", () => {
     localRunner.update(0.1, 0.11);
     worldRunner.update(0.1, 0.11);
 
-    expect(localRunner.states[0]?.instanceData[0]).toBeCloseTo(11);
+    expect(localRunner.states[0]?.instanceData[0]).toBeCloseTo(0);
+    expect(
+      sampleParticleMotion(
+        localRunner.definition.emitters[0]!,
+        localRunner.states[0]!,
+        0,
+        0.1,
+        0.1,
+        [10, 0, 0],
+      ).position[0],
+    ).toBeCloseTo(11);
     expect(worldRunner.states[0]?.instanceData[0]).toBeCloseTo(1);
     expect(localRunner.states[0]?.runtimeFlagsData[0]).toBe(
       PARTICLE_RUNTIME_FLAG_LOCAL_SPACE,
