@@ -1757,9 +1757,13 @@ describe("Pixi VFX runtime renderer", () => {
     instance.destroy();
   });
 
-  it.each(["add", "multiply", "subtract", "lerp"] as const)(
-    "binds independent graph textures for %s and refreshes loads and overrides",
-    (operation) =>
+  it.each(
+    (["add", "multiply", "subtract", "lerp"] as const).flatMap((operation) =>
+      [false, true].map((animated) => ({ operation, animated })),
+    ),
+  )(
+    "binds independent $operation textures (animated=$animated) and refreshes loads and overrides",
+    ({ operation, animated }) =>
       withFakePixiDomAdapter(() => {
         const a = new Texture({
           source: new TextureSource({ width: 2, height: 2 }),
@@ -1798,6 +1802,15 @@ describe("Pixi VFX runtime renderer", () => {
           ],
           outputs: { baseColor: "out" },
         });
+        if (!animated) {
+          graph.nodes = graph.nodes.filter(
+            (n) => n.id !== "time" && n.id !== "pan",
+          );
+          graph.edges = graph.edges.filter(
+            (e) => e.id !== "time-pan" && e.id !== "pan-a",
+          );
+          graph.nodes.find((n) => n.id === "a")!.inputs.uv = null;
+        }
         const material = createMaterialInstance(graph, "multi");
         material.mainTex = { type: "texture", id: "main", path: "main.png" };
         const textures = new Map([
@@ -2067,7 +2080,17 @@ describe("Pixi VFX runtime renderer", () => {
         tier2VisibleParticles: number;
         differs: boolean;
         error?: string;
+        multiTexture: {
+          readbacks: number;
+          results: {
+            operation: string;
+            stage: string;
+            actual: number[];
+            expected: number[];
+          }[];
+        };
       };
+      expect(pixels.error).toBeUndefined();
       expect(pixels.plainVisibleParticles).toBeGreaterThan(0);
       expect(pixels.tier2VisibleParticles).toBeGreaterThan(0);
       expect(pixels.plainAlphaSum).toBeGreaterThan(0);
@@ -2075,6 +2098,16 @@ describe("Pixi VFX runtime renderer", () => {
       expect(pixels.error).toBeUndefined();
       expect(pixels.tier2ColorSum).toBeGreaterThan(0);
       expect(pixels.differs).toBe(true);
+      expect(pixels.multiTexture.results).toHaveLength(20);
+      for (const sample of pixels.multiTexture.results) {
+        sample.actual.forEach((value, channel) => {
+          expect(
+            Math.abs(value - sample.expected[channel]!),
+            `${sample.operation}: ${sample.stage} channel ${channel}`,
+          ).toBeLessThanOrEqual(1);
+        });
+      }
+      expect(pixels.multiTexture.readbacks).toBe(0);
       expect(pixels.tier2ColorSum).not.toBe(pixels.plainColorSum);
     } finally {
       await browser.close();
