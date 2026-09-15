@@ -482,13 +482,13 @@ void main(void) {
       case "dynamicParameter":
         return "uDynamicParams";
       case "multiply":
-        return `((${input("a", "vec4(1.0)")}) * (${input("b", "vec4(1.0)")}))`;
+        return `((${input("a", this.scalar(this.number(p.a, 1)))}) * (${input("b", this.scalar(this.number(p.b, 1)))}))`;
       case "add":
-        return `((${input("a", "vec4(0.0)")}) + (${input("b", "vec4(0.0)")}))`;
+        return `((${input("a", this.scalar(this.number(p.a, 0)))}) + (${input("b", this.scalar(this.number(p.b, 0)))}))`;
       case "subtract":
-        return `((${input("a", "vec4(0.0)")}) - (${input("b", "vec4(0.0)")}))`;
+        return `((${input("a", this.scalar(this.number(p.a, 0)))}) - (${input("b", this.scalar(this.number(p.b, 0)))}))`;
       case "divide":
-        return `((${input("a", "vec4(0.0)")}) / max(abs(${input("b", "vec4(1.0)")}), vec4(0.000001)))`;
+        return `((${input("a", this.scalar(this.number(p.a, 0)))}) / max(abs(${input("b", this.scalar(this.number(p.b, 1)))}), vec4(0.000001)))`;
       case "min":
         return `min(${input("a", "vec4(0.0)")}, ${input("b", "vec4(0.0)")})`;
       case "max":
@@ -497,7 +497,7 @@ void main(void) {
         const t = node.inputs.t
           ? input("t", "vec4(0.5)")
           : this.scalar(this.number(p.t, 0.5));
-        return `mix(${input("a", "vec4(0.0)")}, ${input("b", "vec4(1.0)")}, ${t})`;
+        return `mix(${input("a", this.scalar(this.number(p.a, 0)))}, ${input("b", this.scalar(this.number(p.b, 1)))}, ${t})`;
       }
       case "oneMinus":
         return `(vec4(1.0) - (${input("in", "vec4(0.0)")}))`;
