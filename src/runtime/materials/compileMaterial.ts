@@ -13,6 +13,7 @@ import type {
 import {
   isSpriteMasterGraph,
   resolveMaterialParamValue,
+  resolveMaterialTextureNodeBinding,
   serializeShaderGraph,
   SPRITE_MASTER_SHADER_ID,
 } from "../schema/materials";
@@ -843,6 +844,34 @@ export function compileMaterial(
   const mainTexUid = opts.mainTexUid ?? null;
   const analysis = analyzeGraphTier(graph);
   const index = indexGraph(graph);
+  // The bake operates on MainTex's already-sampled pixels and caches only its
+  // identity. Independently assigned image assets must remain live resources:
+  // they can load/change separately and need not share MainTex's resolution.
+  // This also avoids copying entire source images once for every baked pixel.
+  if (analysis.tier === "tier0-bake" || analysis.tier === "tier1-fixed") {
+    for (const id of reachableFromOutputs(graph, index)) {
+      const node = index.nodeById.get(id);
+      if (!node) continue;
+      if (
+        node.type !== "textureSample" &&
+        node.type !== "particleSubUV" &&
+        node.type !== "antialiasedTextureMask"
+      )
+        continue;
+      const binding = resolveMaterialTextureNodeBinding(
+        graph,
+        instance,
+        node,
+        index.nodeById,
+        index.edgeById,
+      );
+      if (binding.path && !binding.isMainTex) {
+        analysis.tier = "tier2-shader";
+        analysis.vertexUvNodeIds = [];
+        break;
+      }
+    }
+  }
   const particleColorUsage = analyzeParticleColorChannelUsage(graph, index);
   const opacityIsConstantOne = analyzeOpacityIsConstantOne(graph, index);
   const diagnostics: string[] = [];

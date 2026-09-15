@@ -1603,3 +1603,60 @@ describe("materialDigest", () => {
     expect(materialDigest(g, i, 1)).not.toBe(materialDigest(g, i, 2));
   });
 });
+
+describe("assigned material texture resources", () => {
+  it.each([
+    "textureSample",
+    "particleSubUV",
+    "antialiasedTextureMask",
+  ] as const)(
+    "keeps a static %s with its own image on the shader path",
+    (type) => {
+      const g = graph({
+        nodes: [node("image", type, {}, { tex: "second.png" })],
+        edges: [edge("out", "image", "output", "baseColor")],
+        outputs: { baseColor: "out" },
+      });
+      expect(compileMaterial(g, createMaterialInstance(g, "mi")).tier).toBe(
+        "tier2-shader",
+      );
+    },
+  );
+
+  it("promotes a texture parameter supplied only by an instance override", () => {
+    const g = graph({
+      params: [
+        { name: "Image", type: "texture", default: "" } as MaterialParam,
+      ],
+      nodes: [
+        node("p", "param", {}, { name: "Image" }),
+        node("image", "textureSample", { tex: "p-image" }),
+      ],
+      edges: [
+        edge("p-image", "p", "image", "tex"),
+        edge("out", "image", "output", "baseColor"),
+      ],
+      outputs: { baseColor: "out" },
+    });
+    const instance = createMaterialInstance(g, "mi");
+    expect(compileMaterial(g, instance).tier).toBe("tier0-bake");
+    instance.paramOverrides.Image = "assigned.png";
+    expect(compileMaterial(g, instance).tier).toBe("tier2-shader");
+    g.params[0]!.builtinRole = "mainTex";
+    expect(compileMaterial(g, instance).tier).toBe("tier0-bake");
+  });
+
+  it("does not promote an unreachable texture node", () => {
+    const g = graph({
+      nodes: [
+        node("color", "constant", {}, { value: [1, 0, 0, 1] }),
+        node("unused", "textureSample", {}, { tex: "unused.png" }),
+      ],
+      edges: [edge("out", "color", "output", "baseColor")],
+      outputs: { baseColor: "out" },
+    });
+    expect(compileMaterial(g, createMaterialInstance(g, "mi")).tier).toBe(
+      "tier0-bake",
+    );
+  });
+});

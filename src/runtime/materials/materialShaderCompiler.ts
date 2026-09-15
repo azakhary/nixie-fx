@@ -35,14 +35,7 @@ export function tier2ParticleSamplerDeferralDiagnostics(
   instance: MaterialInstance,
 ): string[] {
   const compiler = new MaterialGlslCompiler(graph, instance);
-  const samplers = compiler.samplerBindings();
-  const messages = [...compiler.samplerDiagnostics()];
-  if (samplers.length > 0) {
-    messages.push(
-      "Per-node material textures are not yet bound on particles; they fall back to the emitter MainTex.",
-    );
-  }
-  return messages;
+  return [...compiler.samplerDiagnostics()];
 }
 export interface CompiledMaterialFragment {
   fragment: string;

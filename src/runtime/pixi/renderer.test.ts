@@ -6,6 +6,7 @@ import {
   ParticleContainer,
   Rectangle,
   Texture,
+  TextureSource,
 } from "pixi.js";
 import { describe, expect, it } from "vitest";
 import { createPixiVfx2dProjection } from "./projection";
@@ -1756,6 +1757,120 @@ describe("Pixi VFX runtime renderer", () => {
     instance.destroy();
   });
 
+  it.each(
+    (["add", "multiply", "subtract", "lerp"] as const).flatMap((operation) =>
+      [false, true].map((animated) => ({ operation, animated })),
+    ),
+  )(
+    "binds independent $operation textures (animated=$animated) and refreshes loads and overrides",
+    ({ operation, animated }) =>
+      withFakePixiDomAdapter(() => {
+        const a = new Texture({
+          source: new TextureSource({ width: 2, height: 2 }),
+        });
+        const b = new Texture({
+          source: new TextureSource({ width: 2, height: 2 }),
+        });
+        const c = new Texture({
+          source: new TextureSource({ width: 2, height: 2 }),
+        });
+        const graph = normalizeShaderGraph({
+          id: "multi-texture",
+          name: "Multi texture",
+          blend: "normal",
+          params: [{ name: "Second", type: "texture", default: "b.png" }],
+          nodes: [
+            matNode("time", "time"),
+            matNode("pan", "panner", { time: "time-pan" }, { speed: [0.1, 0] }),
+            matNode("a", "textureSample", { uv: "pan-a" }, { tex: "a.png" }),
+            matNode("param", "param", {}, { name: "Second" }),
+            matNode("b", "textureSample", { tex: "param-b" }),
+            matNode(
+              "combine",
+              operation,
+              { a: "a-combine", b: "b-combine" },
+              { t: 0.5 },
+            ),
+          ],
+          edges: [
+            matEdge("time-pan", "time", "pan", "time"),
+            matEdge("pan-a", "pan", "a", "uv"),
+            matEdge("param-b", "param", "b", "tex"),
+            matEdge("a-combine", "a", "combine", "a", "RGBA"),
+            matEdge("b-combine", "b", "combine", "b", "RGBA"),
+            matEdge("out", "combine", "out", "baseColor", "RGB"),
+          ],
+          outputs: { baseColor: "out" },
+        });
+        if (!animated) {
+          graph.nodes = graph.nodes.filter(
+            (n) => n.id !== "time" && n.id !== "pan",
+          );
+          graph.edges = graph.edges.filter(
+            (e) => e.id !== "time-pan" && e.id !== "pan-a",
+          );
+          graph.nodes.find((n) => n.id === "a")!.inputs.uv = null;
+        }
+        const material = createMaterialInstance(graph, "multi");
+        material.mainTex = { type: "texture", id: "main", path: "main.png" };
+        const textures = new Map([
+          ["a.png", a],
+          ["main.png", c],
+        ]);
+        const instance = new PixiVfxEffectInstance({
+          effect: materialEmitterEffect(material),
+          materialGraphProvider: () => graph,
+          textureProvider: { getTexture: (ref) => textures.get(ref.path) },
+          fallbackTextures: testFallbackTextures(),
+        });
+        const resources = () =>
+          particleContainers(instance)[1]!.shader!.resources;
+        expect(resources().uTexture).toBe(c.source);
+        expect(resources().uTex0).toBe(a.source);
+        expect(resources().uTex1).toBe(Texture.WHITE.source);
+        expect(
+          instance.stats.missingTextureRefs.map((ref) => ref.path),
+        ).toContain("b.png");
+        textures.set("b.png", b);
+        instance.update(0.01, 0.01);
+        expect(resources().uTex0).toBe(a.source);
+        expect(resources().uTex1).toBe(b.source);
+        expect(
+          instance.stats.missingTextureRefs.map((ref) => ref.path),
+        ).not.toContain("b.png");
+        const stable = particleContainers(instance)[1];
+        instance.update(0.01, 0.02);
+        expect(particleContainers(instance)[1]).toBe(stable);
+        // Replacing an already-loaded asset at the same path refreshes only
+        // its binding; the other node keeps its assigned image.
+        textures.set("b.png", c);
+        instance.update(0.01, 0.03);
+        expect(resources().uTex0).toBe(a.source);
+        expect(resources().uTex1).toBe(c.source);
+        textures.set("b.png", b);
+        instance.update(0.01, 0.04);
+        expect(resources().uTex1).toBe(b.source);
+        textures.set("c.png", c);
+        material.paramOverrides.Second = "c.png";
+        instance.updateDefinition(materialEmitterEffect(material));
+        expect(resources().uTex0).toBe(a.source);
+        expect(resources().uTex1).toBe(c.source);
+        for (const container of [
+          particleContainers(instance)[0]!,
+          ...instance.bloomRoot.children,
+        ]) {
+          if (container instanceof ParticleContainer) {
+            expect(container.shader!.resources.uTex0).toBe(a.source);
+            expect(container.shader!.resources.uTex1).toBe(c.source);
+          }
+        }
+        instance.destroy();
+        a.destroy(true);
+        b.destroy(true);
+        c.destroy(true);
+      }),
+  );
+
   it("binds Tier-2 material shader to particle batches and drives pixel discard from particle data", () => {
     withFakePixiDomAdapter(() => {
       const baseTexture = unitTexture();
@@ -1965,7 +2080,17 @@ describe("Pixi VFX runtime renderer", () => {
         tier2VisibleParticles: number;
         differs: boolean;
         error?: string;
+        multiTexture: {
+          readbacks: number;
+          results: {
+            operation: string;
+            stage: string;
+            actual: number[];
+            expected: number[];
+          }[];
+        };
       };
+      expect(pixels.error).toBeUndefined();
       expect(pixels.plainVisibleParticles).toBeGreaterThan(0);
       expect(pixels.tier2VisibleParticles).toBeGreaterThan(0);
       expect(pixels.plainAlphaSum).toBeGreaterThan(0);
@@ -1973,6 +2098,16 @@ describe("Pixi VFX runtime renderer", () => {
       expect(pixels.error).toBeUndefined();
       expect(pixels.tier2ColorSum).toBeGreaterThan(0);
       expect(pixels.differs).toBe(true);
+      expect(pixels.multiTexture.results).toHaveLength(20);
+      for (const sample of pixels.multiTexture.results) {
+        sample.actual.forEach((value, channel) => {
+          expect(
+            Math.abs(value - sample.expected[channel]!),
+            `${sample.operation}: ${sample.stage} channel ${channel}`,
+          ).toBeLessThanOrEqual(1);
+        });
+      }
+      expect(pixels.multiTexture.readbacks).toBe(0);
       expect(pixels.tier2ColorSum).not.toBe(pixels.plainColorSum);
     } finally {
       await browser.close();
