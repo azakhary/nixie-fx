@@ -26,7 +26,7 @@ export {
  * aRotation`) and replaces the fragment stage with the compiled material graph.
  *
  * The path deliberately exposes only the data ParticleContainer really has:
- * `vUV`, premultiplied `vColor`, and material uniforms. Graphs that require a
+ * `vUV`, straight `vColor`, and material uniforms. Graphs that require a
  * genuine extra per-particle float stream are diagnosed by `compileMaterial`
  * and stay on the future custom-Mesh path instead of silently no-oping here.
  */
@@ -59,6 +59,7 @@ uniform vec4 uColor;
 
 varying vec2 vUV;
 varying vec4 vColor;
+varying vec4 vMaterialWorldColor;
 
 vec2 materialRoundPixels(vec2 position, vec2 targetSize) {
   return (floor(((position * 0.5 + 0.5) * targetSize) + 0.5) / targetSize) * 2.0 - 1.0;
@@ -76,7 +77,10 @@ void main(void) {
     gl_Position.xy = materialRoundPixels(gl_Position.xy, uResolution);
   }
   vUV = aUV;
-  vColor = vec4(aColor.rgb * aColor.a, aColor.a) * uColor;
+  // Pixi supplies premultiplied container color, but straight particle color.
+  vec3 containerTint = uColor.a > 0.0 ? uColor.rgb / uColor.a : vec3(1.0);
+  vColor = aColor;
+  vMaterialWorldColor = vec4(containerTint, uColor.a);
 }
 `;
 
@@ -90,7 +94,14 @@ export function createTier2ParticleMaterialShader({
   if (!canRenderTier2ParticleContainerShader(artifact)) return null;
   const compiled = createMaterialPreviewFragment({ artifact, graph, instance });
   if (!compiled) return null;
-  const fragment = compiled.fragment;
+  // ParticleContainerPipe selects normal-npm/add-npm for straight sources.
+  // Match that exact decision; never mutate a caller-owned texture source.
+  const sourceIsPremultiplied =
+    (texture ?? Texture.WHITE).source.alphaMode !== "no-premultiply-alpha";
+  const fragment = `
+#define MATERIAL_WORLD_COLOR vMaterialWorldColor
+${sourceIsPremultiplied ? "#define MATERIAL_TEXTURE_PREMULTIPLIED\n#define PREMULTIPLIED_ALPHA" : ""}
+${compiled.fragment}`;
   const fixed = artifact.fixed ?? defaultFixed(graph.blend);
   const tiles: [number, number] = [
     Math.max(1, Math.round(textureSheetTiles?.[0] ?? 1)),
