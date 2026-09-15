@@ -6,6 +6,7 @@ import {
   ParticleContainer,
   Rectangle,
   Texture,
+  TextureSource,
 } from "pixi.js";
 import { describe, expect, it } from "vitest";
 import { createPixiVfx2dProjection } from "./projection";
@@ -1755,6 +1756,93 @@ describe("Pixi VFX runtime renderer", () => {
 
     instance.destroy();
   });
+
+  it.each(["add", "multiply", "subtract", "lerp"] as const)(
+    "binds independent graph textures for %s and refreshes loads and overrides",
+    (operation) =>
+      withFakePixiDomAdapter(() => {
+        const a = new Texture({
+          source: new TextureSource({ width: 2, height: 2 }),
+        });
+        const b = new Texture({
+          source: new TextureSource({ width: 2, height: 2 }),
+        });
+        const c = new Texture({
+          source: new TextureSource({ width: 2, height: 2 }),
+        });
+        const graph = normalizeShaderGraph({
+          id: "multi-texture",
+          name: "Multi texture",
+          blend: "normal",
+          params: [{ name: "Second", type: "texture", default: "b.png" }],
+          nodes: [
+            matNode("time", "time"),
+            matNode("pan", "panner", { time: "time-pan" }, { speed: [0.1, 0] }),
+            matNode("a", "textureSample", { uv: "pan-a" }, { tex: "a.png" }),
+            matNode("param", "param", {}, { name: "Second" }),
+            matNode("b", "textureSample", { tex: "param-b" }),
+            matNode(
+              "combine",
+              operation,
+              { a: "a-combine", b: "b-combine" },
+              { t: 0.5 },
+            ),
+          ],
+          edges: [
+            matEdge("time-pan", "time", "pan", "time"),
+            matEdge("pan-a", "pan", "a", "uv"),
+            matEdge("param-b", "param", "b", "tex"),
+            matEdge("a-combine", "a", "combine", "a", "RGBA"),
+            matEdge("b-combine", "b", "combine", "b", "RGBA"),
+            matEdge("out", "combine", "out", "baseColor", "RGB"),
+          ],
+          outputs: { baseColor: "out" },
+        });
+        const material = createMaterialInstance(graph, "multi");
+        const textures = new Map([["a.png", a]]);
+        const instance = new PixiVfxEffectInstance({
+          effect: materialEmitterEffect(material),
+          materialGraphProvider: () => graph,
+          textureProvider: { getTexture: (ref) => textures.get(ref.path) },
+          fallbackTextures: testFallbackTextures(),
+        });
+        const resources = () =>
+          particleContainers(instance)[1]!.shader!.resources;
+        expect(resources().uTex0).toBe(a.source);
+        expect(resources().uTex1).toBe(Texture.WHITE.source);
+        expect(
+          instance.stats.missingTextureRefs.map((ref) => ref.path),
+        ).toContain("b.png");
+        textures.set("b.png", b);
+        instance.update(0.01, 0.01);
+        expect(resources().uTex0).toBe(a.source);
+        expect(resources().uTex1).toBe(b.source);
+        expect(
+          instance.stats.missingTextureRefs.map((ref) => ref.path),
+        ).not.toContain("b.png");
+        const stable = particleContainers(instance)[1];
+        instance.update(0.01, 0.02);
+        expect(particleContainers(instance)[1]).toBe(stable);
+        textures.set("c.png", c);
+        material.paramOverrides.Second = "c.png";
+        instance.updateDefinition(materialEmitterEffect(material));
+        expect(resources().uTex0).toBe(a.source);
+        expect(resources().uTex1).toBe(c.source);
+        for (const container of [
+          particleContainers(instance)[0]!,
+          ...instance.bloomRoot.children,
+        ]) {
+          if (container instanceof ParticleContainer) {
+            expect(container.shader!.resources.uTex0).toBe(a.source);
+            expect(container.shader!.resources.uTex1).toBe(c.source);
+          }
+        }
+        instance.destroy();
+        a.destroy(true);
+        b.destroy(true);
+        c.destroy(true);
+      }),
+  );
 
   it("binds Tier-2 material shader to particle batches and drives pixel discard from particle data", () => {
     withFakePixiDomAdapter(() => {
