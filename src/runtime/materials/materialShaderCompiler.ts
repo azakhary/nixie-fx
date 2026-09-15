@@ -1,3 +1,4 @@
+import { expandMaterialSubgraphs } from "./subgraphs";
 import { numberOr } from "../../engine/particleModuleSettingUtils";
 import type { Vec4 } from "../../engine/math";
 import type { MaterialArtifact, MaterialFixedDescriptor } from "./artifact";
@@ -133,6 +134,7 @@ export function createMaterialNodePreviewFragment({
 }
 
 class MaterialGlslCompiler {
+  private readonly authoredGraph: ShaderGraph;
   private readonly nodeById = new Map<string, MaterialNode>();
   private readonly edgeById = new Map<string, MaterialEdge>();
   /** node id -> per-node sampler uniform name (only nodes with a resolved tex). */
@@ -145,6 +147,9 @@ class MaterialGlslCompiler {
     private readonly graph: ShaderGraph,
     private readonly instance: MaterialInstance,
   ) {
+    this.authoredGraph = graph;
+    graph = expandMaterialSubgraphs(graph);
+    this.graph = graph;
     for (const node of graph.nodes) this.nodeById.set(node.id, node);
     for (const edge of graph.edges) this.edgeById.set(edge.id, edge);
     this.collectSamplers();
@@ -298,6 +303,35 @@ void main(void) {
     nodeId: string,
     sourceHandle = "out",
   ): string | null {
+    const authored = this.authoredGraph.nodes.find((n) => n.id === nodeId);
+    if (authored?.type === "subgraph") {
+      const definition = authored.params.graph as ShaderGraph;
+      const handle =
+        sourceHandle === "out"
+          ? definition.subgraph?.outputs[0]?.id
+          : sourceHandle;
+      if (!handle) return null;
+      const edgeId = `preview:${nodeId}`;
+      const expanded = expandMaterialSubgraphs({
+        ...this.authoredGraph,
+        edges: [
+          ...this.authoredGraph.edges,
+          {
+            id: edgeId,
+            source: nodeId,
+            sourceHandle: handle,
+            target: "preview-output",
+            targetHandle: "baseColor",
+          },
+        ],
+        outputs: { baseColor: edgeId },
+      });
+      const edge = expanded.edges.find((e) => e.id === edgeId)!;
+      return new MaterialGlslCompiler(
+        expanded,
+        this.instance,
+      ).nodePreviewFragmentSource(edge.source, edge.sourceHandle);
+    }
     const node = this.nodeById.get(nodeId);
     if (!node) return null;
     const valueExpr = this.evalNode(node, new Set());

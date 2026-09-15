@@ -1,4 +1,9 @@
 import {
+  normalizeShaderGraph,
+  createMaterialInstance,
+} from "../runtime/schema/materials";
+import { makeTexelEvaluator } from "../runtime/materials/bake";
+import {
   existsSync,
   mkdtempSync,
   mkdirSync,
@@ -572,6 +577,90 @@ describe("vfx export writer", () => {
       type: "material",
       path: "materials/gvidon.material",
     });
+  });
+
+  it("exports current subgraph definitions as portable material logic", async () => {
+    const projectRoot = createTempProject();
+    const fn = normalizeShaderGraph({
+      id: "function",
+      name: "Gain",
+      params: [{ name: "Strength", type: "float", default: 0.2 }],
+      nodes: [
+        {
+          id: "param",
+          type: "param",
+          params: { name: "Strength" },
+          inputs: {},
+        },
+      ],
+      subgraph: {
+        outputs: [
+          {
+            id: "result",
+            name: "Result",
+            type: "float",
+            nodeId: "param",
+            handle: "Out",
+          },
+        ],
+      },
+    });
+    const graph = normalizeShaderGraph({
+      id: "parent",
+      name: "Parent",
+      nodes: [
+        {
+          id: "call",
+          type: "subgraph",
+          params: { path: "Gain.material", graph: fn },
+          inputs: {},
+        },
+      ],
+      edges: [
+        {
+          id: "out",
+          source: "call",
+          sourceHandle: "result",
+          target: "output",
+          targetHandle: "baseColor",
+        },
+      ],
+      outputs: { baseColor: "out" },
+    });
+    writeJson(resolve(projectRoot, "assets/materials/Parent.material"), graph);
+    fn.params[0].default = 0.6;
+    writeJson(resolve(projectRoot, "assets/materials/Gain.material"), fn);
+    writeJson(resolve(projectRoot, "particle-data/effects/gain.json"), {
+      id: "gain",
+      emitters: [
+        {
+          id: "emitter",
+          render: { material: { id: "i", shaderId: "parent" } },
+        },
+      ],
+    });
+    const result = await writeVfxExportFromProject({
+      projectRoot,
+      effectDataPath: "particle-data/effects",
+      assetRootPath: "assets",
+      outputPath: "out/vfx",
+    });
+    expect(result.ok).toBe(true);
+    const exported = normalizeShaderGraph(
+      JSON.parse(
+        readFileSync(
+          resolve(projectRoot, "out/vfx/materials/Parent.material"),
+          "utf8",
+        ),
+      ),
+    );
+    expect(exported.nodes.some((n) => n.type === "subgraph")).toBe(false);
+    expect(
+      makeTexelEvaluator(exported, createMaterialInstance(exported, "i"))(
+        [1, 1, 1, 1],
+        [0, 0],
+      )[0],
+    ).toBe(0.6);
   });
 
   it("exports material asset refs from a custom materials folder", async () => {

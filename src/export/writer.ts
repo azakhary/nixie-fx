@@ -1,3 +1,4 @@
+import { expandMaterialSubgraphs } from "../runtime/materials/subgraphs";
 import {
   extname,
   isAbsolute,
@@ -65,6 +66,7 @@ interface SourceEffectFile {
 }
 
 interface ProjectMaterialContext {
+  expandedGraphIds?: Set<string>;
   graphs: Record<string, ShaderGraph>;
   assetPaths: Record<string, string>;
 }
@@ -199,6 +201,21 @@ export async function writeVfxExportWithIo(
     );
   }
   for (const asset of compiled.manifest.assets) {
+    const materialId = Object.keys(materialContext.assetPaths).find(
+      (id) => materialContext.assetPaths[id] === asset.path,
+    );
+    if (materialId && materialContext.expandedGraphIds?.has(materialId)) {
+      writtenFiles.push(
+        await writeJsonFile(
+          outputRoot.absolutePath,
+          asset.path,
+          materialContext.graphs[materialId],
+          { kind: "asset", projectOutputPath: outputRoot.relativePath },
+          io,
+        ),
+      );
+      continue;
+    }
     writtenFiles.push(
       await copyExportAsset(
         assetRoot.absolutePath,
@@ -467,7 +484,44 @@ async function listProjectMaterialContext(
     }
   };
   await walk(root);
-  return { graphs, assetPaths };
+  const hydrate = (
+    graph: ShaderGraph,
+    ancestors: string[] = [],
+  ): ShaderGraph => {
+    if (ancestors.includes(graph.id))
+      throw new Error(`Recursive material subgraph: ${graph.name}`);
+    return {
+      ...graph,
+      nodes: graph.nodes.map((node) => {
+        if (node.type !== "subgraph") return node;
+        const snapshot = node.params.graph as ShaderGraph | undefined;
+        const definition = snapshot && graphs[snapshot.id];
+        if (!definition)
+          throw new Error(`Missing subgraph asset used by ${graph.name}`);
+        return {
+          ...node,
+          params: {
+            ...node.params,
+            graph: hydrate(definition, [...ancestors, graph.id]),
+          },
+        };
+      }),
+    };
+  };
+  const resolved = Object.fromEntries(
+    Object.entries(graphs)
+      .filter(([, graph]) => !graph.subgraph)
+      .map(([id, graph]) => [id, expandMaterialSubgraphs(hydrate(graph))]),
+  );
+  return {
+    graphs: resolved,
+    assetPaths,
+    expandedGraphIds: new Set(
+      Object.values(graphs)
+        .filter((g) => g.nodes.some((n) => n.type === "subgraph"))
+        .map((g) => g.id),
+    ),
+  };
 }
 
 function createCompiledEffectPath(sourceRelativePath: string): string {
