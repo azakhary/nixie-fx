@@ -495,10 +495,18 @@ export function analyzeGraphTier(graph: ShaderGraph): TierAnalysis {
   // Polar UVs are nonlinear: neither vertex interpolation nor the static
   // MainTex bake (which receives an already sampled texel) can represent them.
   // Keep the entire UV chain in the fragment shader, including any panners.
+  // Connected panner speeds can be arbitrary expressions; the fixed UV-pan
+  // descriptor only represents local speed values and would discard the input.
   if (
-    [...reachable].some(
-      (id) => index.nodeById.get(id)?.type === "polarCoordinates",
-    )
+    [...reachable].some((id) => {
+      const node = index.nodeById.get(id);
+      return (
+        node?.type === "polarCoordinates" ||
+        (node?.type === "panner" &&
+          !!node.inputs.speed &&
+          index.edgeSource.has(node.inputs.speed))
+      );
+    })
   ) {
     return {
       tier: "tier2-shader",
