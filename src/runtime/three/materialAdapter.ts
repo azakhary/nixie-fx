@@ -8,6 +8,7 @@ import {
   MeshStandardMaterial,
   ShaderMaterial,
   NoBlending,
+  NoColorSpace,
   NormalBlending,
   Vector2,
   Vector4,
@@ -370,13 +371,29 @@ function createThreeShaderMaterial(
     opacity: 1,
     blend: graph.blend,
   };
+  // Graph math uses raw texel channels, just like the material preview. An
+  // sRGB upload would decode RGB before nodes such as Smoothstep see it.
+  // Keep provider textures unchanged: fixed-function materials still need
+  // their color-space annotation. Reuse one owned view per source texture.
+  const graphTextures = new Map<Texture, Texture>();
+  const graphTexture = (source: Texture | null): Texture | null => {
+    if (!source || source.colorSpace === NoColorSpace) return source;
+    const cached = graphTextures.get(source);
+    if (cached) return cached;
+    const texture = source.clone();
+    texture.colorSpace = NoColorSpace;
+    texture.needsUpdate = true;
+    graphTextures.set(source, texture);
+    return texture;
+  };
   const samplerUniforms: Record<string, { value: Texture | null }> = {};
   for (const sampler of compiled.samplers) {
     samplerUniforms[sampler.uniform] = {
-      value:
+      value: graphTexture(
         options.textureProvider?.getTexture(
           createTextureAssetRef(sampler.path),
         ) ?? mainTexture,
+      ),
     };
   }
   const effectiveBlend = resolveEffectiveParticleBlend(
@@ -388,7 +405,7 @@ function createThreeShaderMaterial(
     vertexShader: THREE_PARTICLE_MATERIAL_VERTEX_SHADER,
     fragmentShader: compiled.fragment,
     uniforms: {
-      uTexture: { value: mainTexture },
+      uTexture: { value: graphTexture(mainTexture) },
       uTime: { value: 0 },
       uFixedTint: { value: new Vector4(...fixed.tint) },
       uFixedEmissive: { value: Math.max(0, fixed.emissive) },
@@ -425,7 +442,7 @@ function createThreeShaderMaterial(
     premultipliedAlpha: effectiveBlend === "premultiplied",
     side: threeSideForGraph(graph),
   });
-  return { material, ownedTextures: [] };
+  return { material, ownedTextures: [...graphTextures.values()] };
 }
 
 function threeSideForGraph(graph: ShaderGraph | undefined): Side {
