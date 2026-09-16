@@ -528,7 +528,7 @@ describe("Pixi VFX runtime renderer", () => {
 
     instance.update(0.01, 0.01);
 
-    expect(firstParticle(instance).rotation).toBeCloseTo(0);
+    expect(firstParticle(instance).rotation).toBeCloseTo(Math.PI * 0.5);
 
     instance.destroy();
   });
@@ -584,7 +584,7 @@ describe("Pixi VFX runtime renderer", () => {
     const withStart = makeAligned(offset);
     withStart.update(0.01, 0.01);
     expect(firstParticle(withStart).rotation).toBeCloseTo(
-      baseRotation + offset,
+      baseRotation - offset,
       4,
     );
     withStart.destroy();
@@ -631,7 +631,7 @@ describe("Pixi VFX runtime renderer", () => {
 
     instance.update(0.01, 0.01);
 
-    expect(firstParticle(instance).rotation).toBeCloseTo(-Math.PI * 0.5, 4);
+    expect(firstParticle(instance).rotation).toBeCloseTo(0, 4);
 
     instance.destroy();
   });
@@ -838,7 +838,7 @@ describe("Pixi VFX runtime renderer", () => {
 
     instance.update(0.01, 0.01);
 
-    expect(firstParticle(instance).rotation).toBeCloseTo(-Math.PI * 0.5, 4);
+    expect(firstParticle(instance).rotation).toBeCloseTo(0, 4);
 
     instance.destroy();
   });
@@ -955,7 +955,7 @@ describe("Pixi VFX runtime renderer", () => {
 
     instance.update(0.01, 0.01);
 
-    expect(firstParticle(instance).rotation).toBeCloseTo(Math.PI * 0.5, 4);
+    expect(firstParticle(instance).rotation).toBeCloseTo(Math.PI, 4);
 
     instance.destroy();
   });
@@ -3119,7 +3119,7 @@ describe("Pixi VFX runtime renderer", () => {
     instance.update(0.01, 0.01);
     const particle = firstParticle(instance);
 
-    expect(particle.rotation).toBeCloseTo(0.7, 4);
+    expect(particle.rotation).toBeCloseTo(-0.7, 4);
     expect(
       (particle.scaleY * particle.texture.height) /
         (particle.scaleX * particle.texture.width),
@@ -3271,12 +3271,12 @@ describe("Pixi VFX runtime renderer", () => {
     // desiredAnchorX = 0.5 + 1 = 1.5 → clamps to 1.
     expect(a.anchorX).toBeCloseTo(1, 4);
     expect(a.anchorY).toBeCloseTo(0.5, 4);
-    expect(a.rotation).toBeCloseTo(Math.PI / 2, 4);
+    expect(a.rotation).toBeCloseTo(-Math.PI / 2, 4);
     // pivotOverflowX = (1 - 1.5) * pixelSizeX * renderScaleX = -0.5 * scaleX(px).
     const scaleXPixels = a.scaleX * Math.max(1, a.texture.width);
-    // rotation π/2: overflow X rotates fully into +y (cos≈0, sin≈1).
+    // Screen rotation -π/2: overflow X rotates into -y.
     expect(a.x).toBeCloseTo(ref.x, 3);
-    expect(a.y).toBeCloseTo(ref.y - 0.5 * scaleXPixels, 3);
+    expect(a.y).toBeCloseTo(ref.y + 0.5 * scaleXPixels, 3);
 
     overflow.destroy();
     centered.destroy();
@@ -3339,12 +3339,12 @@ describe("Pixi VFX runtime renderer", () => {
     // desiredAnchorY = 0.5 - 1 = -0.5 → clamps to 0 (X untouched).
     expect(a.anchorX).toBeCloseTo(0.5, 4);
     expect(a.anchorY).toBeCloseTo(0, 4);
-    expect(a.rotation).toBeCloseTo(Math.PI / 2, 4);
+    expect(a.rotation).toBeCloseTo(-Math.PI / 2, 4);
     // pivotOverflowY = (0 - (-0.5)) * pixelSizeY * renderScaleY = +0.5 * scaleY(px).
     const scaleYPixels = a.scaleY * Math.max(1, a.texture.height);
-    // rotation π/2: overflow Y rotates into -x (particle.x -= pivotOverflowY * sin);
+    // Screen rotation -π/2: overflow Y rotates into +x;
     // y is unchanged (cos ≈ 0). The +0.5 sign (not -0.5) is the flipped-Y pin.
-    expect(a.x).toBeCloseTo(ref.x - 0.5 * scaleYPixels, 3);
+    expect(a.x).toBeCloseTo(ref.x + 0.5 * scaleYPixels, 3);
     expect(a.y).toBeCloseTo(ref.y, 3);
 
     overflow.destroy();

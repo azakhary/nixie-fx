@@ -40,6 +40,85 @@ import { canUseInstancedBillboard } from "./instancedBillboard";
 import { ThreeVfxRenderer } from "./renderer";
 
 describe("ThreeVfxRenderer transform MVP", () => {
+  for (const alignAxis of [
+    "screen",
+    "velocity",
+    "spawnDirection",
+    "vector",
+  ] as const) {
+    for (const degrees of [0, 45, 90, 180, -45, -90]) {
+      for (const animated of [false, true]) {
+        it(`matches Pixi texture axes for ${alignAxis} at ${degrees} degrees (animated=${animated})`, () => {
+          const renderer = new ThreeVfxRenderer({
+            scene: new Scene(),
+            camera: createCamera(),
+          });
+          const base = singleBurstEmitter();
+          const effect = normalizeParticleEffect({
+            id: "orientation-parity",
+            emitters: [
+              {
+                ...base,
+                id: "aligned",
+                modules: { rotation: animated, velocity: true },
+                render: {
+                  alignAxis,
+                  facing: "cameraPlane",
+                  alignmentVector: [1, 1, 0],
+                },
+                initializeParticle: {
+                  ...(base.initializeParticle as Record<string, unknown>),
+                  velocity: { mode: "vector", min: [1, 1, 0], max: [1, 1, 0] },
+                  rotation: {
+                    mode: "constant",
+                    value: animated ? 0 : (degrees * Math.PI) / 180,
+                  },
+                },
+              },
+            ],
+          });
+          effect.emitters[0]!.initializeParticle.angularVelocity.value =
+            animated ? (degrees * Math.PI) / 180 / 0.01 : 0;
+          const three = renderer.createEffect(effect);
+          const pixi = new PixiVfxEffectInstance({
+            effect,
+            projection: createPixiVfx2dProjection({ pixelsPerUnit: 100 }),
+            fallbackTextures: {
+              circle: PixiTexture.WHITE,
+              square: PixiTexture.WHITE,
+              triangleShard: PixiTexture.WHITE,
+              quadShard: PixiTexture.WHITE,
+              grassShard: PixiTexture.WHITE,
+            },
+            seed: 1,
+          });
+          renderer.update(0.01);
+          pixi.update(0.01, 0.01);
+          renderer.update(0.01);
+          pixi.update(0.01, 0.02);
+          const matrix = new Matrix4().fromArray(
+            three.getParticleDebugTransforms()[0]!.matrix,
+          );
+          const rotation = firstPixiParticle(pixi).rotation;
+          const expectedRotation =
+            (alignAxis === "screen" ? 0 : Math.PI / 4) -
+            (degrees * Math.PI) / 180;
+          expect(Math.cos(rotation)).toBeCloseTo(Math.cos(expectedRotation), 5);
+          expect(Math.sin(rotation)).toBeCloseTo(Math.sin(expectedRotation), 5);
+          // Compare oriented texture axes rather than a symmetric quad outline.
+          const right = new Vector3(1, 0, 0).transformDirection(matrix);
+          const top = new Vector3(0, 1, 0).transformDirection(matrix);
+          expect(Math.cos(rotation)).toBeCloseTo(right.x, 5);
+          expect(Math.sin(rotation)).toBeCloseTo(-right.y, 5);
+          expect(Math.sin(rotation)).toBeCloseTo(top.x, 5);
+          expect(-Math.cos(rotation)).toBeCloseTo(-top.y, 5);
+          pixi.destroy();
+          renderer.destroy();
+        });
+      }
+    }
+  }
+
   it("keeps fixed-vector particles ground-aligned instead of facing the camera", () => {
     const camera = createCamera();
     const renderer = new ThreeVfxRenderer({ scene: new Scene(), camera });

@@ -5,9 +5,10 @@ export function projectParticleDirectionAngle(
   world: Vec3,
   direction: Vec3,
   projection: PixiVfxProjection,
+  fallbackAngle = 0,
 ): number {
   const length = Math.hypot(direction[0], direction[1], direction[2]);
-  if (length <= 0.000001) return 0;
+  if (length <= 0.000001) return fallbackAngle;
   const inverseLength = 1 / length;
   const tip: Vec3 = [
     world[0] + direction[0] * inverseLength,
@@ -16,9 +17,9 @@ export function projectParticleDirectionAngle(
   ];
   const start = projection.project(world);
   const end = projection.project(tip);
-  if (!start || !end || start.visible === false) return 0;
+  if (!start || !end || start.visible === false) return fallbackAngle;
   const dx = end.x - start.x;
   const dy = end.y - start.y;
-  if (Math.hypot(dx, dy) <= 0.000001) return 0;
+  if (Math.hypot(dx, dy) <= 0.000001) return fallbackAngle;
   return Math.atan2(dy, dx);
 }
