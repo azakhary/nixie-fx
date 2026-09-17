@@ -20,6 +20,7 @@ import {
   sampleParticleGradientColor,
   sampleParticleCurve,
   sampleParticleMotion,
+  particleSimulationToWorld,
   sampleParticleScalarValue,
   normalizeParticleScalarValue,
   resolveParticleDepthWrite,
@@ -1192,7 +1193,17 @@ describe("particle effect normalization", () => {
     localRunner.update(0.1, 0.11);
     worldRunner.update(0.1, 0.11);
 
-    expect(localRunner.states[0]?.instanceData[0]).toBeCloseTo(11);
+    expect(localRunner.states[0]?.instanceData[0]).toBeCloseTo(0);
+    expect(
+      sampleParticleMotion(
+        localRunner.definition.emitters[0]!,
+        localRunner.states[0]!,
+        0,
+        0.1,
+        0.1,
+        [10, 0, 0],
+      ).position[0],
+    ).toBeCloseTo(11);
     expect(worldRunner.states[0]?.instanceData[0]).toBeCloseTo(1);
     expect(localRunner.states[0]?.runtimeFlagsData[0]).toBe(
       PARTICLE_RUNTIME_FLAG_LOCAL_SPACE,
@@ -3116,7 +3127,7 @@ describe("velocity over lifetime", () => {
 
   for (const simulationSpace of ["local", "world"] as const) {
     for (const space of ["local", "world"] as const) {
-      for (const axis of ["x", "y", "z"] as const) {
+      for (const axis of ["x", "y", "z", "xyz"] as const) {
         it(`orbits the translated emitter: simulation=${simulationSpace}, velocity=${space}, axis=${axis}`, () => {
           const translations: [number, number, number][] = [
             [0, 0, 0],
@@ -3134,7 +3145,10 @@ describe("velocity over lifetime", () => {
               simulationSpace,
               space,
               spawnPosition,
-              orbital: { [axis]: Math.PI / 2 },
+              orbital:
+                axis === "xyz"
+                  ? { x: 0.7, y: 1.1, z: -0.4 }
+                  : { [axis]: Math.PI / 2 },
               orbitalOffset: { x: 0.5, y: -0.25, z: 0.75 },
             });
             const runner = spawnVolRunner(effect, effectPosition);
@@ -3178,6 +3192,9 @@ describe("velocity over lifetime", () => {
         runner.update(0.001, 0.002);
         effect.emitters[0]!.spawn.position = [-9, 0, 0];
         runner.updateDefinition(effect); // current center is now -5
+        expect(runner.states[0]!.instanceData[0]).toBeCloseTo(
+          simulationSpace === "local" ? 1 : -7,
+        );
         const motion = sampleParticleMotion(
           runner.definition.emitters[0]!,
           runner.states[0]!,
@@ -3188,9 +3205,87 @@ describe("velocity over lifetime", () => {
         );
         expect(motion.position[0]).toBeCloseTo(-5, 4);
         expect(motion.position[2]).toBeCloseTo(
-          simulationSpace === "local" ? 0 : 2,
+          simulationSpace === "local" ? -1 : 2,
           4,
         );
+      });
+    }
+  }
+
+  for (const simulationSpace of ["local", "world"] as const) {
+    for (const space of ["local", "world"] as const) {
+      it(`transforms orbital offsets with a rotated, scaled emitter: simulation=${simulationSpace}, velocity=${space}`, () => {
+        const effect = createVelocityOverLifetimeEffect({
+          simulationSpace,
+          space,
+          spawnPosition: [-10, 4, 3],
+          orbital: { x: 0.7, y: 1.1, z: -0.4 },
+          orbitalOffset: { x: 1, y: 2, z: 3 },
+        });
+        effect.emitters[0]!.spawn.rotation = [30, 40, 50];
+        effect.emitters[0]!.spawn.scale = [2, 3, 4];
+        const runner = spawnVolRunner(effect, [2, -1, 5]);
+        const emitter = runner.definition.emitters[0]!;
+        const state = runner.states[0]!;
+        // A particle exactly at the offset has zero orbital radius. Obtain its
+        // transformed center through the existing local-to-world boundary.
+        const center = [1, 2, 3] as [number, number, number];
+        const localEffect = createVelocityOverLifetimeEffect({
+          simulationSpace: "local",
+        });
+        const localRunner = spawnVolRunner(localEffect);
+        particleSimulationToWorld(
+          emitter,
+          localRunner.states[0]!,
+          0,
+          center,
+          [0, 0, 0],
+          [2, -1, 5],
+        );
+        state.instanceData.set(
+          simulationSpace === "local" ? [1, 2, 3] : center,
+          0,
+        );
+        const motion = sampleParticleMotion(
+          emitter,
+          state,
+          0,
+          1,
+          0.1,
+          [2, -1, 5],
+        );
+        for (let i = 0; i < 3; i++) {
+          expect(motion.position[i]).toBeCloseTo(center[i]!, 4);
+          expect(motion.velocity[i]).toBeCloseTo(0, 4);
+        }
+      });
+
+      it(`respects orbital axes with emitter rotation: simulation=${simulationSpace}, velocity=${space}`, () => {
+        const effect = createVelocityOverLifetimeEffect({
+          simulationSpace,
+          space,
+          spawnPosition: [-10, 4, 3],
+          orbital: { x: Math.PI / 2 },
+        });
+        effect.emitters[0]!.spawn.rotation = [0, 0, 90];
+        const runner = spawnVolRunner(effect);
+        const state = runner.states[0]!;
+        // Local +Z is also world +Z under this rotation.
+        state.instanceData[2] += 1;
+        const motion = sampleParticleMotion(
+          runner.definition.emitters[0]!,
+          state,
+          0,
+          1,
+          0.1,
+        );
+        const expected = space === "local" ? [-9, 4, 3] : [-10, 3, 3];
+        const expectedVelocity =
+          space === "local" ? [Math.PI / 2, 0, 0] : [0, -Math.PI / 2, 0];
+        for (let i = 0; i < 3; i++) {
+          expect(motion.position[i]).toBeCloseTo(expected[i]!, 4);
+          expect(motion.velocity[i]).toBeCloseTo(expectedVelocity[i]!, 4);
+        }
       });
     }
   }

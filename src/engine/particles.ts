@@ -3595,18 +3595,6 @@ export class ParticleEffectRunner {
     emitterAge: number,
   ): void {
     const duration = Math.max(0.001, emitter.duration);
-    const movedX = state.hasLastPosition
-      ? this.position[0] - state.lastPosition[0]
-      : 0;
-    const movedY = state.hasLastPosition
-      ? this.position[1] - state.lastPosition[1]
-      : 0;
-    const movedZ = state.hasLastPosition
-      ? this.position[2] - state.lastPosition[2]
-      : 0;
-    if (state.hasLastPosition) {
-      translateLocalSpaceParticles(state, movedX, movedY, movedZ);
-    }
     state.age = emitter.loop ? emitterAge % duration : emitterAge;
     state.previousEffectAge = Math.max(0, emitterAge);
     state.hasPreviousEffectAge = true;
@@ -3676,9 +3664,6 @@ export class ParticleEffectRunner {
     state.lastMoveVelocity[0] = movedX * inverseDt;
     state.lastMoveVelocity[1] = movedY * inverseDt;
     state.lastMoveVelocity[2] = movedZ * inverseDt;
-    if (state.hasLastPosition) {
-      translateLocalSpaceParticles(state, movedX, movedY, movedZ);
-    }
     state.lastPosition[0] = this.position[0];
     state.lastPosition[1] = this.position[1];
     state.lastPosition[2] = this.position[2];
@@ -3801,9 +3786,10 @@ export class ParticleEffectRunner {
         ? (this.emissionGeometries.get(emitter.id) ?? null)
         : null,
     );
-    const x = this.position[0] + spawnSample.position[0];
-    const y = this.position[1] + spawnSample.position[1];
-    const z = this.position[2] + spawnSample.position[2];
+    const localSpace = spawn.simulationSpace === "local";
+    const x = (localSpace ? 0 : this.position[0]) + spawnSample.position[0];
+    const y = (localSpace ? 0 : this.position[1]) + spawnSample.position[1];
+    const z = (localSpace ? 0 : this.position[2]) + spawnSample.position[2];
     const init = emitter.initializeParticle;
     let life = Math.max(
       0.001,
@@ -3848,9 +3834,11 @@ export class ParticleEffectRunner {
         emitterT,
         this.rng.next(),
       );
-      velocityX += state.lastMoveVelocity[0] * multiplier;
-      velocityY += state.lastMoveVelocity[1] * multiplier;
-      velocityZ += state.lastMoveVelocity[2] * multiplier;
+      const inherited: Vec3 = [...state.lastMoveVelocity];
+      if (localSpace) worldDirectionToSimulation(spawn, inherited);
+      velocityX += inherited[0] * multiplier;
+      velocityY += inherited[1] * multiplier;
+      velocityZ += inherited[2] * multiplier;
     }
     if (emitter.modules.limitVelocityOverLifetime) {
       const settings = emitter.advanced.limitVelocityOverLifetime;
@@ -4493,12 +4481,48 @@ export interface ParticleMotionResult {
  * particle's spawn state.
  *
  * `currentEmitterPosition` is the CURRENT effect world position (the runner
- * threads in `this.position`). Orbital motion adds the emitter spawn position
- * to this origin in both velocity spaces; local-space radial motion also uses
- * this current effect origin. When omitted, the per-particle spawn effect
- * origin provides a stable fallback.
+ * threads in `this.position`). Local particle state is transformed by the current
+ * emitter scale, rotation and position, then by this effect translation. World
+ * particles retain their captured spawn coordinates. When omitted, the effect
+ * translation captured at birth is used. Positional-module consumers should use
+ * sampleParticleSimulationMotion and apply particleSimulationToWorld afterwards.
  */
 export function sampleParticleMotion(
+  emitter: ParticleEmitterDefinition,
+  state: ParticleEmitterRuntimeState,
+  particleIndex: number,
+  ageSeconds: number,
+  normalizedAge: number,
+  currentEmitterPosition?: Vec3,
+  out: ParticleMotionResult = {
+    position: [0, 0, 0],
+    velocity: [0, 0, 0],
+  },
+  initialVelocityMultiplier = 1,
+): ParticleMotionResult {
+  sampleParticleSimulationMotion(
+    emitter,
+    state,
+    particleIndex,
+    ageSeconds,
+    normalizedAge,
+    currentEmitterPosition,
+    out,
+    initialVelocityMultiplier,
+  );
+  particleSimulationToWorld(
+    emitter,
+    state,
+    particleIndex,
+    out.position,
+    out.velocity,
+    currentEmitterPosition,
+  );
+  return out;
+}
+
+/** Evaluate in the particle's captured simulation space, before positional modules. */
+export function sampleParticleSimulationMotion(
   emitter: ParticleEmitterDefinition,
   state: ParticleEmitterRuntimeState,
   particleIndex: number,
@@ -4597,6 +4621,91 @@ export function sampleParticleMotion(
   return out;
 }
 
+/** Simulation space is captured at birth; switching the setting affects new particles. */
+export function isParticleLocalSpace(
+  state: ParticleEmitterRuntimeState,
+  index: number,
+): boolean {
+  return (
+    ((state.runtimeFlagsData[index] ?? 0) &
+      PARTICLE_RUNTIME_FLAG_LOCAL_SPACE) !==
+    0
+  );
+}
+
+/** Applies the emitter's full scale/rotation to a simulation-space direction. */
+export function particleSimulationDirectionToWorld(
+  emitter: ParticleEmitterDefinition,
+  state: ParticleEmitterRuntimeState,
+  index: number,
+  direction: Vec3,
+): void {
+  if (!isParticleLocalSpace(state, index)) return;
+  const { scale, rotation } = emitter.spawn;
+  rotateEulerDegreesInto(
+    direction[0] * scale[0],
+    direction[1] * scale[1],
+    direction[2] * scale[2],
+    rotation,
+    direction,
+  );
+}
+
+/** Inverse rotation/scale for explicitly world-space inputs. A collapsed axis
+ * cannot represent world motion; ignore that component until it expands. */
+function worldDirectionToSimulation(
+  spawn: ParticleSpawnSettings,
+  direction: Vec3,
+): void {
+  inverseRotateEulerDegreesInto(direction, spawn.rotation, direction);
+  for (let axis = 0; axis < 3; axis++) {
+    direction[axis] =
+      spawn.scale[axis] > 0.000001 ? direction[axis] / spawn.scale[axis] : 0;
+  }
+}
+
+function inverseRotateEulerDegreesInto(
+  direction: Vec3,
+  rotation: Vec3,
+  out: Vec3,
+): void {
+  const [rx, ry, rz] = rotation.map(degreesToRadians);
+  const cz = Math.cos(rz),
+    sz = Math.sin(rz);
+  const x = direction[0] * cz + direction[1] * sz;
+  const y = -direction[0] * sz + direction[1] * cz;
+  const cy = Math.cos(ry),
+    sy = Math.sin(ry);
+  const xBeforeY = x * cy + direction[2] * sy;
+  const z = -x * sy + direction[2] * cy;
+  const cx = Math.cos(rx),
+    sx = Math.sin(rx);
+  out[0] = xBeforeY;
+  out[1] = y * cx + z * sx;
+  out[2] = -y * sx + z * cx;
+}
+
+/** Shared local-to-world boundary used by renderers and event sampling. No inverse
+ * transform is needed, so collapsed axes can safely expand again on live particles. */
+export function particleSimulationToWorld(
+  emitter: ParticleEmitterDefinition,
+  state: ParticleEmitterRuntimeState,
+  index: number,
+  position: Vec3,
+  velocity: Vec3,
+  effectPosition?: Vec3,
+): void {
+  if (!isParticleLocalSpace(state, index)) return;
+  particleSimulationDirectionToWorld(emitter, state, index, position);
+  particleSimulationDirectionToWorld(emitter, state, index, velocity);
+  const origin = index * PARTICLE_RUNTIME_VECTOR_STRIDE;
+  for (let axis = 0; axis < 3; axis++) {
+    position[axis] +=
+      emitter.spawn.position[axis] +
+      (effectPosition?.[axis] ?? state.spawnOriginData[origin + axis] ?? 0);
+  }
+}
+
 /**
  * Mutates `position` and `velocity` in place with the Velocity over Lifetime
  * contribution. Velocity deltas use the instantaneous speed modifier; analytic
@@ -4620,7 +4729,21 @@ function applyVelocityOverLifetime(
   scratchB: Vec3 = [0, 0, 0],
 ): void {
   const vol = emitter.advanced.velocityOverLifetime;
-  const local = vol.space === "local";
+  const worldModuleInLocalSimulation =
+    isParticleLocalSpace(state, particleIndex) && vol.space === "world";
+  if (worldModuleInLocalSimulation) {
+    particleSimulationToWorld(
+      emitter,
+      state,
+      particleIndex,
+      position,
+      velocity,
+      currentEmitterPosition,
+    );
+  }
+  const localSimulation =
+    isParticleLocalSpace(state, particleIndex) && !worldModuleInLocalSimulation;
+  const local = vol.space === "local" && !localSimulation;
   // 1) LINEAR. World axes in world space; spawn-rotated axes in local space.
   const linRaw = scratchA;
   linRaw[0] = sampleParticleScalarValue(
@@ -4665,21 +4788,27 @@ function applyVelocityOverLifetime(
   // 2) Preserve the radial center: world space anchors on the per-particle
   // spawn effect origin; local space follows the current effect position.
   const runtimeOffset = particleIndex * PARTICLE_RUNTIME_VECTOR_STRIDE;
-  const originX = local
-    ? (currentEmitterPosition?.[0] ??
-      state.spawnOriginData[runtimeOffset + 0] ??
-      0)
-    : (state.spawnOriginData[runtimeOffset + 0] ?? 0);
-  const originY = local
-    ? (currentEmitterPosition?.[1] ??
-      state.spawnOriginData[runtimeOffset + 1] ??
-      0)
-    : (state.spawnOriginData[runtimeOffset + 1] ?? 0);
-  const originZ = local
-    ? (currentEmitterPosition?.[2] ??
-      state.spawnOriginData[runtimeOffset + 2] ??
-      0)
-    : (state.spawnOriginData[runtimeOffset + 2] ?? 0);
+  const originX = localSimulation
+    ? 0
+    : local
+      ? (currentEmitterPosition?.[0] ??
+        state.spawnOriginData[runtimeOffset + 0] ??
+        0)
+      : (state.spawnOriginData[runtimeOffset + 0] ?? 0);
+  const originY = localSimulation
+    ? 0
+    : local
+      ? (currentEmitterPosition?.[1] ??
+        state.spawnOriginData[runtimeOffset + 1] ??
+        0)
+      : (state.spawnOriginData[runtimeOffset + 1] ?? 0);
+  const originZ = localSimulation
+    ? 0
+    : local
+      ? (currentEmitterPosition?.[2] ??
+        state.spawnOriginData[runtimeOffset + 2] ??
+        0)
+      : (state.spawnOriginData[runtimeOffset + 2] ?? 0);
   const offRaw = scratchA;
   offRaw[0] = sampleParticleScalarValue(
     vol.orbitalOffset.x,
@@ -4739,34 +4868,50 @@ function applyVelocityOverLifetime(
     loopAgeT,
   );
   if (wx !== 0 || wy !== 0 || wz !== 0) {
-    // Motion positions are world coordinates, including for local simulation.
-    // The orbit belongs to the individual emitter, not the effect origin.
-    // Velocity space controls the offset axes, not which origin to orbit.
-    const centerX =
-      (currentEmitterPosition?.[0] ??
-        state.spawnOriginData[runtimeOffset] ??
-        0) +
-      emitter.spawn.position[0] +
-      off[0];
-    const centerY =
-      (currentEmitterPosition?.[1] ??
-        state.spawnOriginData[runtimeOffset + 1] ??
-        0) +
-      emitter.spawn.position[1] +
-      off[1];
-    const centerZ =
-      (currentEmitterPosition?.[2] ??
-        state.spawnOriginData[runtimeOffset + 2] ??
-        0) +
-      emitter.spawn.position[2] +
-      off[2];
-    let relX = position[0] - centerX;
-    let relY = position[1] - centerY;
-    let relZ = position[2] - centerZ;
+    // The offset is emitter-local even when the module uses world axes.
+    // Local simulation already has the emitter transform factored out.
+    if (!localSimulation) {
+      rotateEulerDegreesInto(
+        offRaw[0] * emitter.spawn.scale[0],
+        offRaw[1] * emitter.spawn.scale[1],
+        offRaw[2] * emitter.spawn.scale[2],
+        emitter.spawn.rotation,
+        off,
+      );
+    }
+    const centerX = localSimulation
+      ? off[0]
+      : (currentEmitterPosition?.[0] ??
+          state.spawnOriginData[runtimeOffset] ??
+          0) +
+        emitter.spawn.position[0] +
+        off[0];
+    const centerY = localSimulation
+      ? off[1]
+      : (currentEmitterPosition?.[1] ??
+          state.spawnOriginData[runtimeOffset + 1] ??
+          0) +
+        emitter.spawn.position[1] +
+        off[1];
+    const centerZ = localSimulation
+      ? off[2]
+      : (currentEmitterPosition?.[2] ??
+          state.spawnOriginData[runtimeOffset + 2] ??
+          0) +
+        emitter.spawn.position[2] +
+        off[2];
+    scratchA[0] = position[0] - centerX;
+    scratchA[1] = position[1] - centerY;
+    scratchA[2] = position[2] - centerZ;
+    // Conjugate the orbital rotation into emitter axes for a local module.
+    // A world module deliberately keeps its angular axes in world space.
+    if (local)
+      inverseRotateEulerDegreesInto(scratchA, emitter.spawn.rotation, scratchA);
+    let [relX, relY, relZ] = scratchA;
     // Tangential velocity (cross product w x rel) at the current position.
-    const tangX = wy * relZ - wz * relY;
-    const tangY = wz * relX - wx * relZ;
-    const tangZ = wx * relY - wy * relX;
+    let tangX = wy * relZ - wz * relY;
+    let tangY = wz * relX - wx * relZ;
+    let tangZ = wx * relY - wy * relX;
     // Rotate rel about X.
     const ax = wx * ageSeconds * integratedSpeedModifier;
     const cosAx = Math.cos(ax);
@@ -4791,6 +4936,24 @@ function applyVelocityOverLifetime(
     ry = relX * sinAz + relY * cosAz;
     relX = rx3;
     relY = ry;
+    if (local) {
+      rotateEulerDegreesInto(
+        relX,
+        relY,
+        relZ,
+        emitter.spawn.rotation,
+        scratchA,
+      );
+      [relX, relY, relZ] = scratchA;
+      rotateEulerDegreesInto(
+        tangX,
+        tangY,
+        tangZ,
+        emitter.spawn.rotation,
+        scratchB,
+      );
+      [tangX, tangY, tangZ] = scratchB;
+    }
     position[0] = centerX + relX;
     position[1] = centerY + relY;
     position[2] = centerZ + relZ;
@@ -4823,6 +4986,18 @@ function applyVelocityOverLifetime(
       velocity[1] += ny * radial * speedModifier;
       velocity[2] += nz * radial * speedModifier;
     }
+  }
+  if (worldModuleInLocalSimulation) {
+    const origin = particleIndex * PARTICLE_RUNTIME_VECTOR_STRIDE;
+    for (let axis = 0; axis < 3; axis++) {
+      position[axis] -=
+        emitter.spawn.position[axis] +
+        (currentEmitterPosition?.[axis] ??
+          state.spawnOriginData[origin + axis] ??
+          0);
+    }
+    worldDirectionToSimulation(emitter.spawn, position);
+    worldDirectionToSimulation(emitter.spawn, velocity);
   }
 }
 
@@ -4934,30 +5109,6 @@ function isBurstTimeDue(
     eventTime > previousEffectAge + PARTICLE_TIME_EPSILON &&
     eventTime <= effectAge + PARTICLE_TIME_EPSILON
   );
-}
-
-function translateLocalSpaceParticles(
-  state: ParticleEmitterRuntimeState,
-  deltaX: number,
-  deltaY: number,
-  deltaZ: number,
-): void {
-  if (
-    state.activeCount <= 0 ||
-    (Math.abs(deltaX) <= 0.000001 &&
-      Math.abs(deltaY) <= 0.000001 &&
-      Math.abs(deltaZ) <= 0.000001)
-  ) {
-    return;
-  }
-  for (let i = 0; i < state.activeCount; i++) {
-    if ((state.runtimeFlagsData[i] ?? 0) & PARTICLE_RUNTIME_FLAG_LOCAL_SPACE) {
-      const slot = i * PARTICLE_INSTANCE_STRIDE;
-      state.instanceData[slot + 0] += deltaX;
-      state.instanceData[slot + 1] += deltaY;
-      state.instanceData[slot + 2] += deltaZ;
-    }
-  }
 }
 
 function writeParticleDirection(
@@ -5338,6 +5489,17 @@ function sampleParticleSpawn(
     localX += Math.cos(randomAngle) * randomRadius * distance;
     localY += randomY * distance;
     localZ += Math.sin(randomAngle) * randomRadius * distance;
+  }
+
+  if (spawn.simulationSpace === "local") {
+    out.position[0] = localX;
+    out.position[1] = localY;
+    out.position[2] = localZ;
+    out.direction[0] = directionX;
+    out.direction[1] = directionY;
+    out.direction[2] = directionZ;
+    normalizeVec3InPlace(out.direction, 0, 1, 0);
+    return;
   }
 
   rotateEulerDegreesInto(

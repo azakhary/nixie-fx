@@ -240,17 +240,17 @@ describe("normalizeShaderGraph", () => {
 });
 
 describe("resolveEffectiveParticleBlend", () => {
-  it("keeps the emitter authoritative for normal/add and no material", () => {
-    expect(resolveEffectiveParticleBlend("alpha", null)).toBe("alpha");
-    expect(resolveEffectiveParticleBlend("additive", undefined)).toBe(
-      "additive",
-    );
-    expect(resolveEffectiveParticleBlend("alpha", "normal")).toBe("alpha");
-    expect(resolveEffectiveParticleBlend("additive", "normal")).toBe(
-      "additive",
-    );
-    expect(resolveEffectiveParticleBlend("alpha", "add")).toBe("alpha");
-  });
+  it.each(["alpha", "additive", "premultiplied"] as const)(
+    "uses the active workflow regardless of texture blend %s",
+    (blend) => {
+      expect(resolveEffectiveParticleBlend(blend, null)).toBe(blend);
+      expect(resolveEffectiveParticleBlend(blend, undefined)).toBe(blend);
+      expect(resolveEffectiveParticleBlend(blend, "normal")).toBe("alpha");
+      expect(resolveEffectiveParticleBlend(blend, "add")).toBe("additive");
+      expect(resolveEffectiveParticleBlend(blend, "masked")).toBe("masked");
+      expect(resolveEffectiveParticleBlend(blend, "opaque")).toBe("opaque");
+    },
+  );
 
   it("masked/opaque materials override the emitter blend", () => {
     expect(resolveEffectiveParticleBlend("alpha", "masked")).toBe("masked");
@@ -262,21 +262,6 @@ describe("resolveEffectiveParticleBlend", () => {
     expect(materialBlendOverridesEmitter("normal")).toBe(false);
     expect(materialBlendOverridesEmitter("add")).toBe(false);
     expect(materialBlendOverridesEmitter(null)).toBe(false);
-  });
-
-  it("passes an emitter premultiplied blend through when the material is not a cutout", () => {
-    expect(resolveEffectiveParticleBlend("premultiplied", null)).toBe(
-      "premultiplied",
-    );
-    expect(resolveEffectiveParticleBlend("premultiplied", undefined)).toBe(
-      "premultiplied",
-    );
-    expect(resolveEffectiveParticleBlend("premultiplied", "normal")).toBe(
-      "premultiplied",
-    );
-    expect(resolveEffectiveParticleBlend("premultiplied", "add")).toBe(
-      "premultiplied",
-    );
   });
 
   it("still lets a masked/opaque material override a premultiplied emitter", () => {

@@ -1,3 +1,4 @@
+import { expandMaterialSubgraphs } from "./subgraphs";
 import type { Vec4 } from "../../engine/math";
 import { clamp, lerp, smoothstep } from "../../engine/math";
 import { numberOr } from "../../engine/particleModuleSettingUtils";
@@ -446,23 +447,30 @@ function evalNodeInner(
     }
     case "tilingOffset": {
       const uv = inp("uv", [ctx.uv[0], ctx.uv[1], 0, 0]);
-      const tile = toVec4(p.tile as Vec4);
-      const offset = toVec4(p.offset as Vec4);
-      return [
-        uv[0] * (tile[0] || 1) + offset[0],
-        uv[1] * (tile[1] || 1) + offset[1],
-        0,
-        0,
-      ];
+      const tile = inp("tile", toVec4((p.tile ?? [1, 1, 0, 0]) as Vec4));
+      const offset = inp("offset", toVec4(p.offset as Vec4));
+      return [uv[0] * tile[0] + offset[0], uv[1] * tile[1] + offset[1], 0, 0];
     }
     case "multiply":
-      return mulVec4(inp("a", [1, 1, 1, 1]), inp("b", [1, 1, 1, 1]));
+      return mulVec4(
+        inp("a", toVec4(numberOr(p.a, 1))),
+        inp("b", toVec4(numberOr(p.b, 1))),
+      );
     case "add":
-      return addVec4(inp("a", [0, 0, 0, 0]), inp("b", [0, 0, 0, 0]));
+      return addVec4(
+        inp("a", toVec4(numberOr(p.a, 0))),
+        inp("b", toVec4(numberOr(p.b, 0))),
+      );
     case "subtract":
-      return subVec4(inp("a", [0, 0, 0, 0]), inp("b", [0, 0, 0, 0]));
+      return subVec4(
+        inp("a", toVec4(numberOr(p.a, 0))),
+        inp("b", toVec4(numberOr(p.b, 0))),
+      );
     case "divide":
-      return divVec4(inp("a", [0, 0, 0, 0]), inp("b", [1, 1, 1, 1]));
+      return divVec4(
+        inp("a", toVec4(numberOr(p.a, 0))),
+        inp("b", toVec4(numberOr(p.b, 1))),
+      );
     case "min": {
       const a = inp("a", [0, 0, 0, 0]);
       const b = inp("b", [0, 0, 0, 0]);
@@ -484,8 +492,8 @@ function evalNodeInner(
       ];
     }
     case "lerp": {
-      const a = inp("a", [0, 0, 0, 0]);
-      const b = inp("b", [1, 1, 1, 1]);
+      const a = inp("a", toVec4(numberOr(p.a, 0)));
+      const b = inp("b", toVec4(numberOr(p.b, 1)));
       const t = node.inputs.t
         ? inp("t", [0, 0, 0, 0])
         : toVec4(numberOr(p.t, 0.5));
@@ -809,6 +817,7 @@ export function makeTexelEvaluator(
   instance: MaterialInstance,
   options: TexelEvaluatorOptions = {},
 ): (source: Vec4, uv: [number, number]) => Vec4 {
+  graph = expandMaterialSubgraphs(graph);
   const nodeById = new Map<string, MaterialNode>();
   for (const n of graph.nodes) nodeById.set(n.id, n);
   const edgeById = new Map<string, MaterialEdge>();

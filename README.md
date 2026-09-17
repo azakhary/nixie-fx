@@ -113,6 +113,22 @@ backend approximations.
 - [PixiJS v8 opening engine](./examples/pixijs) — a responsive 2D integration
   driven by Pixi's ticker. [Open in CodeSandbox](https://codesandbox.io/p/sandbox/ny2r5y).
 
+## Simulation space
+
+`emitter.spawn.simulationSpace` selects `world` (default) or `local` in both
+renderers. Local particles retain emitter-relative positions and motion; live
+edits to `spawn.position`, `spawn.rotation` (degrees), and `spawn.scale` transform
+existing particles, including after emission ends. The effect position supplies
+the outer translation, and the renderer root inherits its scene/container parents.
+World particles keep their spawn coordinates when the emitter definition moves.
+
+Simulation space is captured at birth. Changing the setting applies to new
+particles; living particles keep their previous mode without jumping. Restart
+an effect to apply the new mode to every particle. Local scale is applied at
+render time, so even a zero axis can safely expand again. Billboard facing still
+follows the selected alignment/facing mode. Trail space is controlled separately
+by the Trails module.
+
 ## Other engines
 
 The export format is engine-neutral JSON: `manifest.json` plus per-effect

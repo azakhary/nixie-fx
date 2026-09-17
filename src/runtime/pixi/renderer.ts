@@ -16,7 +16,10 @@ import {
   type ParticleEffectEvent,
   normalizeParticleEffect,
   sampleInitialParticleColor,
-  sampleParticleMotion,
+  sampleParticleSimulationMotion,
+  particleSimulationToWorld,
+  particleSimulationDirectionToWorld,
+  isParticleLocalSpace,
   sampleParticleGradientAlpha,
   sampleParticleGradientColor,
   sampleParticleScalarValue,
@@ -57,7 +60,6 @@ import {
   createSpriteMasterGraph,
   resolveEffectiveMainTexPath,
   resolveEffectiveParticleBlend,
-  materialBlendOverridesEmitter,
   SPRITE_MASTER_SHADER_ID,
   type EffectiveParticleBlend,
   type MaterialInstance,
@@ -74,6 +76,7 @@ import { createPixiVfxProceduralTextures } from "./proceduralTextures";
 import {
   canRenderTier2ParticleContainerShader,
   createTier2ParticleMaterialShader,
+  createMaterialPreviewFragment,
   updateTier2ParticleMaterialShaderDynamicParams,
   updateTier2ParticleMaterialShaderTime,
 } from "./materialShader";
@@ -221,6 +224,7 @@ interface ResolvedEmitterRender {
   materialRenderFace?: MaterialRenderFace;
   missingRef?: VfxTextureAssetRef;
   missingTrailRef?: VfxTextureAssetRef;
+  missingMaterialTextureRefs: VfxTextureAssetRef[];
 }
 
 interface ResolvedEmitterMaterial {
@@ -234,6 +238,7 @@ interface ResolvedTier2MaterialRender {
   instance: MaterialInstance;
   artifact: MaterialArtifact;
   textureSheetTiles: [number, number];
+  samplerTextures: ReadonlyMap<string, Texture>;
 }
 
 interface UvQuad {
@@ -288,6 +293,11 @@ export class PixiVfxEffectInstance {
   private readonly derivedTextures = new Map<string, Texture>();
   /** Premultiplied-source textures (I13-A), cached by source uid. */
   private readonly premultipliedTextures = new Map<string | number, Texture>();
+  /** Cache compiled sampler paths; texture availability is resolved each update. */
+  private readonly materialSamplerPaths = new WeakMap<
+    MaterialArtifact,
+    string[]
+  >();
   /** Compiled material artifacts, cached by materialDigest (graph+overrides+mainTexUid). */
   private readonly materialArtifacts = new Map<string, MaterialArtifact>();
   /** The built-in "Sprite Master" graph — the implicit material of every emitter. */
@@ -772,6 +782,7 @@ export class PixiVfxEffectInstance {
     for (let i = 0; i < this.effect.emitters.length; i++) {
       const emitter = this.effect.emitters[i]!;
       const render = this.resolveEmitterRender(emitter);
+      missingTextureRefs.push(...render.missingMaterialTextureRefs);
       if (render.missingRef) missingTextureRefs.push(render.missingRef);
       if (render.missingTrailRef)
         missingTextureRefs.push(render.missingTrailRef);
@@ -991,9 +1002,10 @@ export class PixiVfxEffectInstance {
         artifact,
       );
     }
-    // Tier 0 BAKE supersedes per-emitter opacity derivation (the material's
-    // own opacity output is baked in); other tiers keep the legacy path. A
-    // blocked material never renders with a legacy/default shader.
+    // Custom graphs own opacity and blending in every tier. Sprite Master
+    // remains the built-in texture workflow with emitter-owned settings.
+    const customMaterial =
+      !!material && material.shaderId !== SPRITE_MASTER_SHADER_ID;
     const texture =
       !materialBlock &&
       material &&
@@ -1006,16 +1018,18 @@ export class PixiVfxEffectInstance {
             artifact,
           )
         : sourceTexture;
-    let renderedTexture = materialBlock
-      ? texture
-      : artifact?.tier === "tier0-bake"
+    let renderedTexture =
+      materialBlock || customMaterial
         ? texture
-        : this.resolveDerivedTexture(texture, emitter);
+        : artifact?.tier === "tier0-bake"
+          ? texture
+          : this.resolveDerivedTexture(texture, emitter);
     // I13-A: a texture-only premultiplied emitter binds an already-premultiplied
     // source (no upload multiply, no normal→normal-npm swap). Layered AFTER the
     // opacity derivation so both compose.
     if (
       !materialBlock &&
+      !customMaterial &&
       artifact?.tier !== "tier0-bake" &&
       emitter.render.blend === "premultiplied"
     ) {
@@ -1046,6 +1060,40 @@ export class PixiVfxEffectInstance {
       !materialBlock && material && artifact
         ? materialAnimatedUvFromArtifact(artifact)
         : null;
+    const samplerTextures = new Map<string, Texture>();
+    const missingMaterialTextureRefs: VfxTextureAssetRef[] = [];
+    const samplerKeys: string[] = [];
+    if (
+      material &&
+      resolvedMaterial?.graph &&
+      artifact?.tier === "tier2-shader"
+    ) {
+      let paths = this.materialSamplerPaths.get(artifact);
+      if (!paths) {
+        const compiled = createMaterialPreviewFragment({
+          graph: resolvedMaterial.graph,
+          instance: material,
+          artifact,
+        });
+        paths = [
+          ...new Set(compiled?.samplers.map((binding) => binding.path) ?? []),
+        ];
+        this.materialSamplerPaths.set(artifact, paths);
+      }
+      for (const path of paths) {
+        const ref = createPixiVfxTextureRef(path);
+        const resolved = this.textureProvider?.getTexture(ref);
+        if (resolved) samplerTextures.set(path, resolved);
+        else missingMaterialTextureRefs.push(ref);
+        samplerKeys.push(
+          JSON.stringify([
+            path,
+            resolved?.uid ?? null,
+            resolved?.source.uid ?? null,
+          ]),
+        );
+      }
+    }
     const tier2Material =
       !materialBlock &&
       material &&
@@ -1058,18 +1106,18 @@ export class PixiVfxEffectInstance {
             instance: material,
             artifact,
             textureSheetTiles: textureSheetTiles(emitter),
+            samplerTextures,
           }
         : null;
     const materialUvKey = materialUvRenderKey(materialUv);
-    // Material-authoritative blends (masked/opaque) fork the batch key; the
-    // legacy emitter-blend axis above stays byte-identical for normal/add.
+    // Include every custom graph blend so live Normal/Additive changes
+    // rebuild the batch even when the texture blend has not changed.
     const effectiveBlend = resolveEffectiveParticleBlend(
       emitter.render.blend,
-      artifact?.blend ?? null,
+      customMaterial ? artifact?.blend : null,
     );
-    const materialBlendKey = materialBlendOverridesEmitter(artifact?.blend)
-      ? `materialBlend:${effectiveBlend}`
-      : "";
+    const materialBlendKey =
+      customMaterial && artifact ? `materialBlend:${effectiveBlend}` : "";
     // The trail container can use its own authored texture. When unset (the
     // default), trails reuse the particle texture. Missing trail textures fall
     // back to the particle texture and are reported through missing-texture
@@ -1108,12 +1156,14 @@ export class PixiVfxEffectInstance {
         mainKey,
         ...renderKeyParts,
         materialKey,
+        ...samplerKeys,
         materialBlendKey,
         materialUvKey,
         trailKey,
       ]
         .filter(Boolean)
         .join("|"),
+      missingMaterialTextureRefs,
       texture: renderedTexture,
       trailTexture,
       frameTextures,
@@ -1782,7 +1832,7 @@ function updateParticle(
   const seed = data[offset + 8] ?? 0.5;
   // Unified analytic motion (gravity/drag + velocity-over-lifetime), the same
   // evaluator events/collision/sub-emitters use, so they agree with the render.
-  const motion = sampleParticleMotion(
+  const motion = sampleParticleSimulationMotion(
     emitter,
     state,
     index,
@@ -1816,7 +1866,21 @@ function updateParticle(
     velocity,
   };
   applyPositionalMotionModules(emitter, motionModuleSample);
+  particleSimulationToWorld(
+    emitter,
+    state,
+    index,
+    world,
+    velocity,
+    emitterPosition,
+  );
   if (alignToVelocity) {
+    particleSimulationDirectionToWorld(
+      emitter,
+      state,
+      index,
+      pixiAnalyticVelocityScratch,
+    );
     pixiPreCollisionWorldScratch[0] = world[0];
     pixiPreCollisionWorldScratch[1] = world[1];
     pixiPreCollisionWorldScratch[2] = world[2];
@@ -1837,6 +1901,7 @@ function updateParticle(
     state.spawnDirectionData[runtimeVectorOffset + 1] ?? 1,
     state.spawnDirectionData[runtimeVectorOffset + 2] ?? 0,
   ];
+  particleSimulationDirectionToWorld(emitter, state, index, spawnDirection);
   const sizeSettingsX =
     emitter.mode === "billboard"
       ? emitter.billboard.sizeValue
@@ -1871,8 +1936,17 @@ function updateParticle(
     seed,
     loopAge,
   );
-  const sizeX = initSizeX * overLifeSizeX * sizeBySpeed;
-  const sizeY = initSizeY * overLifeSizeY * sizeBySpeed;
+  const localSpace = isParticleLocalSpace(state, index);
+  const sizeX =
+    initSizeX *
+    overLifeSizeX *
+    sizeBySpeed *
+    (localSpace ? emitter.spawn.scale[0] : 1);
+  const sizeY =
+    initSizeY *
+    overLifeSizeY *
+    sizeBySpeed *
+    (localSpace ? emitter.spawn.scale[1] : 1);
   const pixelsPerWorldUnit = Math.max(
     0.000001,
     projection.pixelsPerWorldUnit(world),
@@ -1970,7 +2044,14 @@ function updateParticle(
   particle.anchorY = anchorY;
   particle.scaleX = (pixelSizeX * renderScaleX) / Math.max(1, texture.width);
   particle.scaleY = (pixelSizeY * renderScaleY) / Math.max(1, texture.height);
+  let localRotation = 0;
+  if (localSpace && !alignDirection && !trail.stretchesAlongMotion) {
+    const localAxis: Vec3 = [1, 0, 0];
+    particleSimulationDirectionToWorld(emitter, state, index, localAxis);
+    localRotation = projectParticleDirectionAngle(world, localAxis, projection);
+  }
   const baseRotation =
+    localRotation +
     (data[offset + 9] ?? 0) +
     ageSeconds * (data[offset + 10] ?? 0) +
     particleRotationBySpeedOffset(emitter, speed, ageSeconds, seed, loopAge);
@@ -2413,6 +2494,7 @@ function createEmitterTier2MaterialShader(
     artifact: material.artifact,
     texture,
     textureSheetTiles: material.textureSheetTiles,
+    samplerTextures: material.samplerTextures,
   });
 }
 

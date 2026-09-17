@@ -71,8 +71,8 @@ export type MaterialParamScope = "per-material" | "global";
 
 /**
  * Blend states the renderer can realize (renderer key axis). `normal`/`add`
- * leave the emitter's render blend authoritative (legacy contract);
- * `masked`/`opaque` are material-authoritative and override it (I12-G).
+ * own the blend state whenever a custom material is active, as do
+ * `masked`/`opaque`. Texture-only emitters keep their render blend.
  */
 export type MaterialBlend = "normal" | "add" | "masked" | "opaque";
 
@@ -130,6 +130,8 @@ export type MaterialPerParticleFeed =
   "spawn-color" | "smuggle-8bit" | "mesh-attr";
 
 export interface MaterialParam {
+  /** Stable subgraph port identity; independent of its display name. */
+  inputId?: string;
   /** Unique within the shader; the Custom-Data re-key target (§5). */
   name: string;
   type: MaterialParamType;
@@ -307,7 +309,17 @@ export interface MaterialEdge {
   targetHandle: string;
 }
 
+export interface MaterialSubgraphOutput {
+  id: string;
+  name: string;
+  type: MaterialParamType;
+  nodeId: string;
+  handle: string;
+}
+
 export interface ShaderGraph {
+  /** Reusable function asset; params define its input interface. */
+  subgraph?: { outputs: MaterialSubgraphOutput[] };
   /** materialShaderId base. */
   id: string;
   name: string;
@@ -448,6 +460,7 @@ export function normalizeMaterialParam(
   if (type === "float" && source.perParticle === true) param.perParticle = true;
   const feed = normalizePerParticleFeed(source.perParticleFeed);
   if (feed) param.perParticleFeed = feed;
+  if (typeof source.inputId === "string") param.inputId = source.inputId;
   const builtinRole = normalizeParamBuiltinRole(source.builtinRole, type, name);
   if (builtinRole) param.builtinRole = builtinRole;
   return param;
@@ -504,7 +517,7 @@ function normalizeBlend(value: unknown): MaterialBlend {
     : "normal";
 }
 
-/** Material blends that override the emitter's render blend (I12-G). */
+/** Cutout/opaque blends that bypass translucent rendering and write depth. */
 export function materialBlendOverridesEmitter(
   blend: MaterialBlend | EffectiveParticleBlend | null | undefined,
 ): blend is "masked" | "opaque" {
@@ -512,9 +525,8 @@ export function materialBlendOverridesEmitter(
 }
 
 /**
- * The effective GPU blend for a particle draw. `masked`/`opaque` materials own
- * the blend state (Unreal parity); `normal`/`add` keep the emitter's
- * `render.blend` authoritative so legacy effects render byte-identical. Both
+ * The active custom material owns the GPU blend for a particle draw.
+ * Without a custom material, the texture workflow owns the blend. Both
  * backends must resolve through here — no ad-hoc per-renderer branches.
  */
 export type EffectiveParticleBlend =
@@ -524,9 +536,9 @@ export function resolveEffectiveParticleBlend(
   emitterBlend: "alpha" | "additive" | "premultiplied",
   materialBlend: MaterialBlend | null | undefined,
 ): EffectiveParticleBlend {
-  return materialBlendOverridesEmitter(materialBlend)
-    ? materialBlend
-    : emitterBlend;
+  if (materialBlend === "normal") return "alpha";
+  if (materialBlend === "add") return "additive";
+  return materialBlend ?? emitterBlend;
 }
 
 export function normalizeMaterialRenderFace(
@@ -614,6 +626,21 @@ export function normalizeShaderGraph(value: unknown): ShaderGraph {
   }
   if (MATERIAL_RENDER_FACES.includes(source.side as MaterialRenderFace)) {
     graph.side = source.side as MaterialRenderFace;
+  }
+  if (isRecord(source.subgraph) && Array.isArray(source.subgraph.outputs)) {
+    graph.params = graph.params.map((p) => ({
+      ...p,
+      inputId: p.inputId ?? p.name,
+    }));
+    graph.subgraph = {
+      outputs: source.subgraph.outputs.filter(isRecord).map((p) => ({
+        id: safeString(p.id, "Output"),
+        name: safeString(p.name, "Output"),
+        type: normalizeParamType(p.type),
+        nodeId: safeString(p.nodeId, ""),
+        handle: safeString(p.handle, "Out"),
+      })),
+    };
   }
   if (source.builtin === "sprite-master") graph.builtin = "sprite-master";
   return graph;
@@ -730,6 +757,7 @@ export function serializeMaterialParam(
     group: param.group,
     default: param.default,
   };
+  if (param.inputId !== undefined) out.inputId = param.inputId;
   if (param.scope !== "per-material") out.scope = param.scope;
   if (param.sliderMin !== undefined) out.sliderMin = param.sliderMin;
   if (param.sliderMax !== undefined) out.sliderMax = param.sliderMax;
@@ -765,6 +793,7 @@ export function serializeShaderGraph(
   if (graph.side !== undefined) {
     out.side = graph.side;
   }
+  if (graph.subgraph) out.subgraph = graph.subgraph;
   if (graph.builtin) out.builtin = graph.builtin;
   return out;
 }

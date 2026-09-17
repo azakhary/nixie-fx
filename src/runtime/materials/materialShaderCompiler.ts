@@ -1,7 +1,9 @@
+import { expandMaterialSubgraphs } from "./subgraphs";
 import { numberOr } from "../../engine/particleModuleSettingUtils";
 import type { Vec4 } from "../../engine/math";
 import type { MaterialArtifact, MaterialFixedDescriptor } from "./artifact";
 import {
+  isSpriteMasterGraph,
   resolveMaterialParamValue,
   resolveMaterialTextureNodeBinding,
   type MaterialEdge,
@@ -33,14 +35,7 @@ export function tier2ParticleSamplerDeferralDiagnostics(
   instance: MaterialInstance,
 ): string[] {
   const compiler = new MaterialGlslCompiler(graph, instance);
-  const samplers = compiler.samplerBindings();
-  const messages = [...compiler.samplerDiagnostics()];
-  if (samplers.length > 0) {
-    messages.push(
-      "Per-node material textures are not yet bound on particles; they fall back to the emitter MainTex.",
-    );
-  }
-  return messages;
+  return [...compiler.samplerDiagnostics()];
 }
 export interface CompiledMaterialFragment {
   fragment: string;
@@ -133,6 +128,7 @@ export function createMaterialNodePreviewFragment({
 }
 
 class MaterialGlslCompiler {
+  private readonly authoredGraph: ShaderGraph;
   private readonly nodeById = new Map<string, MaterialNode>();
   private readonly edgeById = new Map<string, MaterialEdge>();
   /** node id -> per-node sampler uniform name (only nodes with a resolved tex). */
@@ -145,6 +141,9 @@ class MaterialGlslCompiler {
     private readonly graph: ShaderGraph,
     private readonly instance: MaterialInstance,
   ) {
+    this.authoredGraph = graph;
+    graph = expandMaterialSubgraphs(graph);
+    this.graph = graph;
     for (const node of graph.nodes) this.nodeById.set(node.id, node);
     for (const edge of graph.edges) this.edgeById.set(edge.id, edge);
     this.collectSamplers();
@@ -242,6 +241,12 @@ class MaterialGlslCompiler {
           : "materialSampleMain(vUV).a");
     const maskExpr = opacityMask ?? "vec4(1.0)";
     const emissiveScale = fixed ? "uFixedEmissive" : "0.0";
+    // Custom graphs own their Particle Color/Alpha connections. Applying the
+    // input again here squares authored opacity (and tint). Sprite Master is
+    // the implicit fixed-function graph and still needs the particle factor.
+    const particleModulation = isSpriteMasterGraph(this.graph)
+      ? "outColor *= vColor;"
+      : "// Custom graph already owns particle color and opacity.";
 
     // Opaque ignores opacity/opacityMask entirely: no discard, alpha forced to
     // 1 in the output encode (I12-G).
@@ -253,9 +258,9 @@ void main(void) {
   vec4 outColor = baseColor;
   outColor.rgb = outColor.rgb * uFixedTint.rgb + emissiveColor.rgb;
   outColor.rgb *= (1.0 + max(0.0, ${emissiveScale}));
-  outColor *= vColor;
+  ${particleModulation}
   outColor.a = 1.0;
-  gl_FragColor = outColor;
+  gl_FragColor = materialEncodeOutput(outColor);
 }
 `;
     }
@@ -273,10 +278,10 @@ void main(void) {
     // soft alpha encode byte-identical to before.
     const alphaEncode =
       this.graph.blend === "masked"
-        ? `outColor *= vColor;
+        ? `${particleModulation}
   outColor.a = 1.0;`
         : `outColor.a = opacityValue * uFixedTint.a * uFixedOpacity;
-  outColor *= vColor;`;
+  ${particleModulation}`;
 
     return `${MATERIAL_FRAGMENT_HEADER}${this.samplerUniformDeclarations()}
 void main(void) {
@@ -289,7 +294,7 @@ void main(void) {
   outColor.rgb = outColor.rgb * uFixedTint.rgb + emissiveColor.rgb;
   outColor.rgb *= (1.0 + max(0.0, ${emissiveScale}));
   ${alphaEncode}
-  gl_FragColor = outColor;
+  gl_FragColor = materialEncodeOutput(outColor);
 }
 `;
   }
@@ -298,6 +303,35 @@ void main(void) {
     nodeId: string,
     sourceHandle = "out",
   ): string | null {
+    const authored = this.authoredGraph.nodes.find((n) => n.id === nodeId);
+    if (authored?.type === "subgraph") {
+      const definition = authored.params.graph as ShaderGraph;
+      const handle =
+        sourceHandle === "out"
+          ? definition.subgraph?.outputs[0]?.id
+          : sourceHandle;
+      if (!handle) return null;
+      const edgeId = `preview:${nodeId}`;
+      const expanded = expandMaterialSubgraphs({
+        ...this.authoredGraph,
+        edges: [
+          ...this.authoredGraph.edges,
+          {
+            id: edgeId,
+            source: nodeId,
+            sourceHandle: handle,
+            target: "preview-output",
+            targetHandle: "baseColor",
+          },
+        ],
+        outputs: { baseColor: edgeId },
+      });
+      const edge = expanded.edges.find((e) => e.id === edgeId)!;
+      return new MaterialGlslCompiler(
+        expanded,
+        this.instance,
+      ).nodePreviewFragmentSource(edge.source, edge.sourceHandle);
+    }
     const node = this.nodeById.get(nodeId);
     if (!node) return null;
     const valueExpr = this.evalNode(node, new Set());
@@ -368,7 +402,7 @@ void main(void) {
         if (uniform) {
           // A node-picked texture overrides MainTex; the SubUV frame-blend stays
           // on the MainTex path (deferred), so sample the picked texture directly.
-          return `texture2D(${uniform}, fract(${inputUv()}))`;
+          return `materialTextureSample(${uniform}, fract(${inputUv()}))`;
         }
         return p.blend === true
           ? `materialSampleSubUvBlend(${inputUv()})`
@@ -378,9 +412,9 @@ void main(void) {
         return "vec4(vUV, 0.0, 0.0)";
       case "tilingOffset": {
         const uv = input("uv", "vec4(vUV, 0.0, 0.0)");
-        const tile = this.constVec4(p.tile, [1, 1, 0, 0]);
-        const offset = this.constVec4(p.offset);
-        return `vec4((${uv}).xy * max((${tile}).xy, vec2(0.000001)) + (${offset}).xy, 0.0, 0.0)`;
+        const tile = input("tile", this.constVec4(p.tile, [1, 1, 0, 0]));
+        const offset = input("offset", this.constVec4(p.offset));
+        return `vec4((${uv}).xy * (${tile}).xy + (${offset}).xy, 0.0, 0.0)`;
       }
       case "panner": {
         const uv = input("uv", "vec4(vUV, 0.0, 0.0)");
@@ -441,13 +475,13 @@ void main(void) {
       case "dynamicParameter":
         return "uDynamicParams";
       case "multiply":
-        return `((${input("a", "vec4(1.0)")}) * (${input("b", "vec4(1.0)")}))`;
+        return `((${input("a", this.scalar(this.number(p.a, 1)))}) * (${input("b", this.scalar(this.number(p.b, 1)))}))`;
       case "add":
-        return `((${input("a", "vec4(0.0)")}) + (${input("b", "vec4(0.0)")}))`;
+        return `((${input("a", this.scalar(this.number(p.a, 0)))}) + (${input("b", this.scalar(this.number(p.b, 0)))}))`;
       case "subtract":
-        return `((${input("a", "vec4(0.0)")}) - (${input("b", "vec4(0.0)")}))`;
+        return `((${input("a", this.scalar(this.number(p.a, 0)))}) - (${input("b", this.scalar(this.number(p.b, 0)))}))`;
       case "divide":
-        return `((${input("a", "vec4(0.0)")}) / max(abs(${input("b", "vec4(1.0)")}), vec4(0.000001)))`;
+        return `((${input("a", this.scalar(this.number(p.a, 0)))}) / max(abs(${input("b", this.scalar(this.number(p.b, 1)))}), vec4(0.000001)))`;
       case "min":
         return `min(${input("a", "vec4(0.0)")}, ${input("b", "vec4(0.0)")})`;
       case "max":
@@ -456,7 +490,7 @@ void main(void) {
         const t = node.inputs.t
           ? input("t", "vec4(0.5)")
           : this.scalar(this.number(p.t, 0.5));
-        return `mix(${input("a", "vec4(0.0)")}, ${input("b", "vec4(1.0)")}, ${t})`;
+        return `mix(${input("a", this.scalar(this.number(p.a, 0)))}, ${input("b", this.scalar(this.number(p.b, 1)))}, ${t})`;
       }
       case "oneMinus":
         return `(vec4(1.0) - (${input("in", "vec4(0.0)")}))`;
@@ -610,7 +644,7 @@ void main(void) {
    */
   private sampleTexture(node: MaterialNode, uvExpr: string): string {
     const uniform = this.nodeSamplerUniform.get(node.id);
-    if (uniform) return `texture2D(${uniform}, fract(${uvExpr}))`;
+    if (uniform) return `materialTextureSample(${uniform}, fract(${uvExpr}))`;
     return `materialSampleMain(${uvExpr})`;
   }
 

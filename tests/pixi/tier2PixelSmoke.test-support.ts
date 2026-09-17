@@ -1,3 +1,4 @@
+import { sampleMultipleTextures } from "./multiTexturePixelSmoke.test-support";
 import { Application, Rectangle, Texture } from "pixi.js";
 import { normalizeShaderGraph } from "../../src/runtime/schema/materials";
 import { createPixiVfx2dProjection } from "../../src/runtime/pixi/projection";
@@ -12,6 +13,7 @@ interface Tier2PixelSmokeResult {
   tier2VisibleParticles: number;
   differs: boolean;
   error?: string;
+  multiTexture?: Awaited<ReturnType<typeof sampleMultipleTextures>>;
 }
 
 declare global {
@@ -220,7 +222,7 @@ async function sample(material: unknown): Promise<PixelSample> {
     alphaSum += output.pixels[i + 3]!;
   }
   renderer.destroy();
-  app.destroy({ removeView: true, releaseGlobalResources: true });
+  app.destroy({ removeView: true });
   return {
     colorSum,
     alphaSum,
@@ -232,7 +234,9 @@ async function sample(material: unknown): Promise<PixelSample> {
 async function run(): Promise<void> {
   const plain = await sample(null);
   const tier2 = await sample({ id: "mi-tier2", shaderId: materialGraph.id });
+  const multiTexture = await sampleMultipleTextures();
   window.__tier2PixelResult = {
+    multiTexture,
     plainColorSum: plain.colorSum,
     plainAlphaSum: plain.alphaSum,
     plainVisibleParticles: plain.visibleParticles,
@@ -254,6 +258,6 @@ void run().catch((error: unknown) => {
     tier2AlphaSum: 0,
     tier2VisibleParticles: 0,
     differs: false,
-    error: error instanceof Error ? error.message : String(error),
+    error: error instanceof Error ? error.stack : String(error),
   };
 });

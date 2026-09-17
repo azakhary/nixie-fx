@@ -1,3 +1,4 @@
+import { expandMaterialSubgraphs } from "./subgraphs";
 import type { Vec4 } from "../../engine/math";
 import { numberOr } from "../../engine/particleModuleSettingUtils";
 import type {
@@ -12,6 +13,7 @@ import type {
 import {
   isSpriteMasterGraph,
   resolveMaterialParamValue,
+  resolveMaterialTextureNodeBinding,
   serializeShaderGraph,
   SPRITE_MASTER_SHADER_ID,
 } from "../schema/materials";
@@ -421,6 +423,18 @@ export interface TierAnalysis {
  *   else                         → Tier 2
  */
 export function analyzeGraphTier(graph: ShaderGraph): TierAnalysis {
+  try {
+    graph = expandMaterialSubgraphs(graph);
+  } catch {
+    return {
+      tier: "tier3-defer",
+      deferredNodeIds: graph.nodes
+        .filter((n) => n.type === "subgraph")
+        .map((n) => n.id),
+      vertexUvNodeIds: [],
+      perParticleNodeIds: [],
+    };
+  }
   // Empty graph or the builtin Sprite Master is always Tier 1 (§6.2).
   const hasNoOutputs =
     Object.values(graph.outputs).every((e) => !e) || graph.nodes.length === 0;
@@ -810,9 +824,54 @@ export function compileMaterial(
   instance: MaterialInstance,
   opts: CompileMaterialOptions = {},
 ): MaterialArtifact {
+  try {
+    graph = expandMaterialSubgraphs(graph);
+  } catch (error) {
+    return {
+      tier: "tier3-defer",
+      shaderId: SPRITE_MASTER_SHADER_ID,
+      blend: graph.blend,
+      perParticleFeeds: {},
+      diagnostics: [error instanceof Error ? error.message : String(error)],
+      deferredNodeIds: graph.nodes
+        .filter((n) => n.type === "subgraph")
+        .map((n) => n.id),
+      usesParticleColorRGB: false,
+      usesParticleColorAlpha: false,
+      opacityIsConstantOne: false,
+    };
+  }
   const mainTexUid = opts.mainTexUid ?? null;
   const analysis = analyzeGraphTier(graph);
   const index = indexGraph(graph);
+  // The bake operates on MainTex's already-sampled pixels and caches only its
+  // identity. Independently assigned image assets must remain live resources:
+  // they can load/change separately and need not share MainTex's resolution.
+  // This also avoids copying entire source images once for every baked pixel.
+  if (analysis.tier === "tier0-bake" || analysis.tier === "tier1-fixed") {
+    for (const id of reachableFromOutputs(graph, index)) {
+      const node = index.nodeById.get(id);
+      if (!node) continue;
+      if (
+        node.type !== "textureSample" &&
+        node.type !== "particleSubUV" &&
+        node.type !== "antialiasedTextureMask"
+      )
+        continue;
+      const binding = resolveMaterialTextureNodeBinding(
+        graph,
+        instance,
+        node,
+        index.nodeById,
+        index.edgeById,
+      );
+      if (binding.path && !binding.isMainTex) {
+        analysis.tier = "tier2-shader";
+        analysis.vertexUvNodeIds = [];
+        break;
+      }
+    }
+  }
   const particleColorUsage = analyzeParticleColorChannelUsage(graph, index);
   const opacityIsConstantOne = analyzeOpacityIsConstantOne(graph, index);
   const diagnostics: string[] = [];

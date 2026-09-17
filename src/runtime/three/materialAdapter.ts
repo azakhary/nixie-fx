@@ -104,7 +104,11 @@ export function createThreeEmitterMaterial(
         mainTexUid: sourceTexture ? sourceTexture.id : null,
       });
       opacityIsConstantOne = artifact.opacityIsConstantOne;
-      materialBlend = artifact.blend;
+      materialBlend =
+        materialInstance.shaderId !== SPRITE_MASTER_SHADER_ID ||
+        materialBlendOverridesEmitter(artifact.blend)
+          ? artifact.blend
+          : null;
       if (materialInstance.shaderId !== SPRITE_MASTER_SHADER_ID) {
         particleColorUsage = {
           rgb: artifact.usesParticleColorRGB,
@@ -208,7 +212,15 @@ export function createThreeEmitterMaterial(
     depthTest: emitter.render.depthTest,
     depthWrite: materialOwnsBlend
       ? true
-      : resolveParticleDepthWrite(emitter.render),
+      : resolveParticleDepthWrite({
+          ...emitter.render,
+          blend:
+            effectiveBlend === "additive"
+              ? "additive"
+              : effectiveBlend === "premultiplied"
+                ? "premultiplied"
+                : "alpha",
+        }),
     blending: threeBlendingForEffectiveBlend(effectiveBlend),
     premultipliedAlpha: effectiveBlend === "premultiplied",
     side: threeSideForGraph(materialGraph),
@@ -399,7 +411,15 @@ function createThreeShaderMaterial(
     depthWrite: materialOwnsBlend
       ? true
       : artifact.opacityIsConstantOne
-        ? resolveParticleDepthWrite(emitter.render)
+        ? resolveParticleDepthWrite({
+            ...emitter.render,
+            blend:
+              effectiveBlend === "additive"
+                ? "additive"
+                : effectiveBlend === "premultiplied"
+                  ? "premultiplied"
+                  : "alpha",
+          })
         : false,
     blending: threeBlendingForEffectiveBlend(effectiveBlend),
     premultipliedAlpha: effectiveBlend === "premultiplied",
@@ -422,7 +442,7 @@ uniform vec4 uDynamicParams;
 
 void main() {
   vUV = uv;
-  vColor = vec4(uParticleColor.rgb * uParticleColor.a, uParticleColor.a);
+  vColor = uParticleColor;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
