@@ -4480,7 +4480,7 @@ export interface ParticleMotionResult {
  * orbital / radial, gated by `modules.velocityOverLifetime`) on top of the
  * particle's spawn state.
  *
- * `currentEmitterPosition` is the emitter's CURRENT world position (the runner
+ * `currentEmitterPosition` is the CURRENT effect world position (the runner
  * threads in `this.position`). Local particle state is transformed by the current
  * emitter scale, rotation and position, then by this effect translation. World
  * particles retain their captured spawn coordinates. When omitted, the effect
@@ -4657,7 +4657,19 @@ function worldDirectionToSimulation(
   spawn: ParticleSpawnSettings,
   direction: Vec3,
 ): void {
-  const [rx, ry, rz] = spawn.rotation.map(degreesToRadians);
+  inverseRotateEulerDegreesInto(direction, spawn.rotation, direction);
+  for (let axis = 0; axis < 3; axis++) {
+    direction[axis] =
+      spawn.scale[axis] > 0.000001 ? direction[axis] / spawn.scale[axis] : 0;
+  }
+}
+
+function inverseRotateEulerDegreesInto(
+  direction: Vec3,
+  rotation: Vec3,
+  out: Vec3,
+): void {
+  const [rx, ry, rz] = rotation.map(degreesToRadians);
   const cz = Math.cos(rz),
     sz = Math.sin(rz);
   const x = direction[0] * cz + direction[1] * sz;
@@ -4668,11 +4680,9 @@ function worldDirectionToSimulation(
   const z = -x * sy + direction[2] * cy;
   const cx = Math.cos(rx),
     sx = Math.sin(rx);
-  direction[0] = spawn.scale[0] > 0.000001 ? xBeforeY / spawn.scale[0] : 0;
-  direction[1] =
-    spawn.scale[1] > 0.000001 ? (y * cx + z * sx) / spawn.scale[1] : 0;
-  direction[2] =
-    spawn.scale[2] > 0.000001 ? (-y * sx + z * cx) / spawn.scale[2] : 0;
+  out[0] = xBeforeY;
+  out[1] = y * cx + z * sx;
+  out[2] = -y * sx + z * cx;
 }
 
 /** Shared local-to-world boundary used by renderers and event sampling. No inverse
@@ -4775,8 +4785,8 @@ function applyVelocityOverLifetime(
   position[1] += lin[1] * ageSeconds * integratedSpeedModifier;
   position[2] += lin[2] * ageSeconds * integratedSpeedModifier;
 
-  // 2) CENTER for orbital / radial. World space anchors on the per-particle
-  // spawn origin; local space follows the current emitter position.
+  // 2) Preserve the radial center: world space anchors on the per-particle
+  // spawn effect origin; local space follows the current effect position.
   const runtimeOffset = particleIndex * PARTICLE_RUNTIME_VECTOR_STRIDE;
   const originX = localSimulation
     ? 0
@@ -4858,13 +4868,50 @@ function applyVelocityOverLifetime(
     loopAgeT,
   );
   if (wx !== 0 || wy !== 0 || wz !== 0) {
-    let relX = position[0] - centerX;
-    let relY = position[1] - centerY;
-    let relZ = position[2] - centerZ;
+    // The offset is emitter-local even when the module uses world axes.
+    // Local simulation already has the emitter transform factored out.
+    if (!localSimulation) {
+      rotateEulerDegreesInto(
+        offRaw[0] * emitter.spawn.scale[0],
+        offRaw[1] * emitter.spawn.scale[1],
+        offRaw[2] * emitter.spawn.scale[2],
+        emitter.spawn.rotation,
+        off,
+      );
+    }
+    const centerX = localSimulation
+      ? off[0]
+      : (currentEmitterPosition?.[0] ??
+          state.spawnOriginData[runtimeOffset] ??
+          0) +
+        emitter.spawn.position[0] +
+        off[0];
+    const centerY = localSimulation
+      ? off[1]
+      : (currentEmitterPosition?.[1] ??
+          state.spawnOriginData[runtimeOffset + 1] ??
+          0) +
+        emitter.spawn.position[1] +
+        off[1];
+    const centerZ = localSimulation
+      ? off[2]
+      : (currentEmitterPosition?.[2] ??
+          state.spawnOriginData[runtimeOffset + 2] ??
+          0) +
+        emitter.spawn.position[2] +
+        off[2];
+    scratchA[0] = position[0] - centerX;
+    scratchA[1] = position[1] - centerY;
+    scratchA[2] = position[2] - centerZ;
+    // Conjugate the orbital rotation into emitter axes for a local module.
+    // A world module deliberately keeps its angular axes in world space.
+    if (local)
+      inverseRotateEulerDegreesInto(scratchA, emitter.spawn.rotation, scratchA);
+    let [relX, relY, relZ] = scratchA;
     // Tangential velocity (cross product w x rel) at the current position.
-    const tangX = wy * relZ - wz * relY;
-    const tangY = wz * relX - wx * relZ;
-    const tangZ = wx * relY - wy * relX;
+    let tangX = wy * relZ - wz * relY;
+    let tangY = wz * relX - wx * relZ;
+    let tangZ = wx * relY - wy * relX;
     // Rotate rel about X.
     const ax = wx * ageSeconds * integratedSpeedModifier;
     const cosAx = Math.cos(ax);
@@ -4889,6 +4936,24 @@ function applyVelocityOverLifetime(
     ry = relX * sinAz + relY * cosAz;
     relX = rx3;
     relY = ry;
+    if (local) {
+      rotateEulerDegreesInto(
+        relX,
+        relY,
+        relZ,
+        emitter.spawn.rotation,
+        scratchA,
+      );
+      [relX, relY, relZ] = scratchA;
+      rotateEulerDegreesInto(
+        tangX,
+        tangY,
+        tangZ,
+        emitter.spawn.rotation,
+        scratchB,
+      );
+      [tangX, tangY, tangZ] = scratchB;
+    }
     position[0] = centerX + relX;
     position[1] = centerY + relY;
     position[2] = centerZ + relZ;

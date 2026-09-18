@@ -96,6 +96,58 @@ describe("local simulation transform parity", () => {
     },
   );
 
+  for (const simulationSpace of ["local", "world"] as const) {
+    for (const space of ["local", "world"] as const) {
+      it(`shares orbital centers after live movement: simulation=${simulationSpace}, velocity=${space}`, () => {
+        const definition = effect(simulationSpace);
+        const emitter = definition.emitters[0]!;
+        emitter.spawn.position = [-10, 4, 3];
+        emitter.spawn.rotation = [20, 30, 40];
+        emitter.modules.velocityOverLifetime = true;
+        const vol = emitter.advanced.velocityOverLifetime;
+        vol.space = space;
+        vol.orbital.x = createConstantParticleScalar(0.7, -100, 100);
+        vol.orbital.y = createConstantParticleScalar(1.1, -100, 100);
+        vol.orbital.z = createConstantParticleScalar(-0.4, -100, 100);
+        vol.orbitalOffset.x = createConstantParticleScalar(1, -100, 100);
+        vol.orbitalOffset.y = createConstantParticleScalar(2, -100, 100);
+        const instance = pixi(definition);
+        const camera = new PerspectiveCamera();
+        camera.position.z = 20;
+        const three = new ThreeVfxRenderer({
+          scene: new Scene(),
+          camera,
+          captureDebugTransforms: true,
+        });
+        const threeInstance = three.createEffect(definition);
+        try {
+          instance.update(0.01, 0.01);
+          three.update(0.01);
+          instance.update(0.99, 1);
+          three.update(0.99);
+          for (const position of [
+            [-10, 4, 3],
+            [5, -6, 2],
+          ] as [number, number, number][]) {
+            emitter.spawn.position = position;
+            instance.updateDefinition(definition);
+            threeInstance.updateDefinition(definition);
+            instance.update(0, 1);
+            three.update(0);
+            const quad = instance.getParticleDebugQuads()[0]!;
+            const transform = threeInstance.getParticleDebugTransforms()[0]!;
+            expect(quad.x).toBeCloseTo(transform.position[0], 4);
+            expect(quad.y).toBeCloseTo(transform.position[1], 4);
+            expect(instance.stats.activeParticles).toBe(1);
+          }
+        } finally {
+          instance.destroy();
+          three.destroy();
+        }
+      });
+    }
+  }
+
   it("keeps true local state, follows a stopped emitter and recovers from zero scale", () => {
     const definition = effect("local");
     const runner = new ParticleEffectRunner(definition);
