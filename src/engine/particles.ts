@@ -301,7 +301,9 @@ export interface ParticleRenderSettings {
   /**
    * Which local billboard axis is pinned before Start Rotation is added.
    * `screen` keeps the billboard screen-up; the other modes pin the local
-   * alignment axis to velocity, spawn direction, or a fixed vector.
+   * +Y axis (texture top) to velocity, spawn direction, or a fixed vector.
+   * Start Rotation is right-handed about local +Z (counterclockwise viewed
+   * from the front), applied after alignment. Pixi converts to Y-down space.
    */
   alignAxis: ParticleRenderAlignAxis;
   /**

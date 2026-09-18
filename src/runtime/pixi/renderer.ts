@@ -1,4 +1,9 @@
 import {
+  particleRoll,
+  particleRollToScreen,
+  projectedParticleAlignmentRotation,
+} from "../particleOrientation";
+import {
   Container,
   Particle,
   ParticleContainer,
@@ -2052,9 +2057,20 @@ function updateParticle(
   }
   const baseRotation =
     localRotation +
-    (data[offset + 9] ?? 0) +
-    ageSeconds * (data[offset + 10] ?? 0) +
-    particleRotationBySpeedOffset(emitter, speed, ageSeconds, seed, loopAge);
+    particleRollToScreen(
+      particleRoll(
+        data[offset + 9] ?? 0,
+        data[offset + 10] ?? 0,
+        ageSeconds,
+        particleRotationBySpeedOffset(
+          emitter,
+          speed,
+          ageSeconds,
+          seed,
+          loopAge,
+        ),
+      ),
+    );
   const trailRotation = trail.stretchesAlongMotion
     ? projectParticleDirectionAngle(world, motionDirection, projection) -
       Math.PI * 0.5
@@ -2808,7 +2824,14 @@ function particleAlignmentRotation(
   projection: PixiVfxProjection,
 ): number {
   return direction
-    ? projectParticleDirectionAngle(world, direction, projection)
+    ? projectedParticleAlignmentRotation(
+        projectParticleDirectionAngle(
+          world,
+          direction,
+          projection,
+          -Math.PI * 0.5,
+        ),
+      )
     : 0;
 }
 

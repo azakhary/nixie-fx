@@ -1,4 +1,9 @@
 import {
+  PARTICLE_ALIGNMENT_AXIS,
+  PARTICLE_FRONT_AXIS,
+  particleRoll,
+} from "../particleOrientation";
+import {
   AdditiveBlending,
   BufferGeometry,
   Color,
@@ -109,8 +114,8 @@ import type {
 const DEFAULT_SEED = 0x7f4a7c15;
 const FIXED_SEEK_STEP_SECONDS = 1 / 60;
 const BASE_QUAD_GEOMETRY = new PlaneGeometry(1, 1);
-const DEFAULT_NORMAL = new Vector3(0, 0, 1);
-const DEFAULT_UP = new Vector3(0, 1, 0);
+const DEFAULT_NORMAL = new Vector3(...PARTICLE_FRONT_AXIS);
+const DEFAULT_UP = new Vector3(...PARTICLE_ALIGNMENT_AXIS);
 
 interface ThreeEmitterDrawParameters {
   sizeMultiplier: number;
@@ -960,10 +965,12 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       (data[offset + 13] ?? 0) + ageSeconds * (data[offset + 15] ?? 0);
     const rotationY =
       (data[offset + 14] ?? 0) + ageSeconds * (data[offset + 16] ?? 0);
-    const rotationZ =
-      (data[offset + 9] ?? 0) +
-      ageSeconds * (data[offset + 10] ?? 0) +
-      particleRotationBySpeedOffset(emitter, speed, ageSeconds, seed, loopAge);
+    const rotationZ = particleRoll(
+      data[offset + 9] ?? 0,
+      data[offset + 10] ?? 0,
+      ageSeconds,
+      particleRotationBySpeedOffset(emitter, speed, ageSeconds, seed, loopAge),
+    );
     const initColor = sampleInitialParticleColorInto(
       emitter.initializeParticle.color,
       seed,
