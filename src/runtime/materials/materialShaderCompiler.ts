@@ -419,7 +419,7 @@ void main(void) {
       case "panner": {
         const uv = input("uv", "vec4(vUV, 0.0, 0.0)");
         const t = node.inputs.time ? inputScalar("time", 0) : "uTime";
-        const speed = this.constVec4(p.speed);
+        const speed = input("speed", this.constVec4(p.speed));
         return `vec4((${uv}).xy + (${t}) * (${speed}).xy, 0.0, 0.0)`;
       }
       case "polarCoordinates": {
