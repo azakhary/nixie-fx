@@ -14,7 +14,11 @@ import {
   validateVfxMeshAssetPath,
   validateVfxTextureAssetPath,
 } from "../assets/paths";
-import { normalizeShaderGraph, type ShaderGraph } from "./materials";
+import {
+  normalizeShaderGraph,
+  resolveMaterialTextureNodeBinding,
+  type ShaderGraph,
+} from "./materials";
 import type { MaterialInstance } from "../../engine/materialInstance";
 
 export type VfxValidationSeverity = "error" | "warning" | "info";
@@ -572,10 +576,24 @@ function validateTextureSheetAnimationFields(
 
 /** The built-in fixed-function shader (no graph needed). */
 const SPRITE_MASTER_VALIDATION_ID = "sprite-master";
-/** Hard simultaneous sampler-tap ceiling; design target is ≤3 (§6.4). */
-const MATERIAL_SAMPLER_CAP = 4;
-/** Design sampler target — the uTexture+uRamp+uMask tight case (§6.4). */
-const MATERIAL_SAMPLER_DESIGN = 3;
+/**
+ * Per-node texture samplers the compiled material shader can bind
+ * (`uTex0..uTex6`); mirrors `MATERIAL_MAX_NODE_SAMPLERS` in
+ * `runtime/materials/materialShaderCompiler.ts` (kept literal here so the
+ * schema layer does not depend on the compiler).
+ */
+const MATERIAL_MAX_NODE_SAMPLERS = 7;
+/**
+ * Hard simultaneous sampler-tap ceiling: the shared MainTex (`uTexture`) plus
+ * the per-node samplers. Every WebGL/GLES device guarantees ≥8 fragment
+ * texture units, so this is what the renderer actually binds.
+ */
+const MATERIAL_SAMPLER_CAP = MATERIAL_MAX_NODE_SAMPLERS + 1;
+/**
+ * Soft sampler budget — from here on each extra tap is a real memory-bandwidth
+ * cost under particle overdraw on mobile (§6.4). Warning only.
+ */
+const MATERIAL_SAMPLER_DESIGN = 6;
 /** Soft Tier-2 program count across the effect (§0, §9). */
 const MATERIAL_TIER2_VARIANT_SOFT_CAP = 6;
 /** Hard Tier-2 program ceiling (§9, §10-P4). */
@@ -596,7 +614,16 @@ const MATERIAL_BANNED_NODE_TYPES = new Set<string>([
 interface ShaderGraphStructure {
   /** Distinct textureSample nodes reachable from honored outputs. */
   samplerTaps: number;
-  /** Any reachable node reads the shared MainTex/fallback particle texture. */
+  /**
+   * Reachable texture nodes that bind their own (non-MainTex) texture and so
+   * each need a per-node sampler (`uTexN`) in the compiled shader.
+   */
+  nodeSamplers: number;
+  /**
+   * Some reachable node reads the shared MainTex/fallback particle texture:
+   * a SubUV/AA-mask node, a textureSample wired to the MainTex parameter, or a
+   * textureSample with no resolvable texture of its own (compiler fallback).
+   */
   requiresMainTexture: boolean;
   /** Per-particle StaticSwitch usage feeding an honored output (banned, §9). */
   hasPerParticleStaticSwitch: boolean;
@@ -623,7 +650,10 @@ interface ShaderGraphStructure {
  * over edges/inputs, counting samplers and flagging deferred/banned/Tier-2
  * features. Cheap and side-effect-free; mirrors the frozen normalize shapes.
  */
-function analyzeShaderGraphStructure(graph: ShaderGraph): ShaderGraphStructure {
+function analyzeShaderGraphStructure(
+  graph: ShaderGraph,
+  instance: MaterialInstance | null = null,
+): ShaderGraphStructure {
   const nodeById = new Map<string, ShaderGraph["nodes"][number]>();
   for (const node of graph.nodes) nodeById.set(node.id, node);
   const edgeById = new Map<string, ShaderGraph["edges"][number]>();
@@ -666,6 +696,7 @@ function analyzeShaderGraphStructure(graph: ShaderGraph): ShaderGraphStructure {
   );
 
   let samplerTaps = 0;
+  let nodeSamplers = 0;
   let requiresMainTexture = false;
   let hasPerParticleStaticSwitch = false;
   let tier2 = false;
@@ -679,7 +710,26 @@ function analyzeShaderGraphStructure(graph: ShaderGraph): ShaderGraphStructure {
       node.type === "antialiasedTextureMask"
     ) {
       samplerTaps += 1;
-      requiresMainTexture = true;
+      if (node.type === "textureSample" && instance) {
+        // Mirror the compiler: a node that resolves its own texture (a wired
+        // non-MainTex texture Parameter or its inline `params.tex`) binds a
+        // per-node sampler and never touches MainTex. Only a node wired to the
+        // MainTex parameter, or one with no texture at all, reads MainTex.
+        const binding = resolveMaterialTextureNodeBinding(
+          graph,
+          instance,
+          node,
+          nodeById,
+          edgeById,
+        );
+        if (binding.path !== "" && !binding.isMainTex) {
+          nodeSamplers += 1;
+        } else {
+          requiresMainTexture = true;
+        }
+      } else {
+        requiresMainTexture = true;
+      }
       // A SubUV *blend* (cross-fade) adds a second tap and a fragment mix.
       if (node.type === "particleSubUV" && node.params.blend === true) {
         samplerTaps += 1;
@@ -712,6 +762,7 @@ function analyzeShaderGraphStructure(graph: ShaderGraph): ShaderGraphStructure {
 
   return {
     samplerTaps,
+    nodeSamplers,
     requiresMainTexture,
     hasPerParticleStaticSwitch,
     bannedNodeTypes,
@@ -797,10 +848,12 @@ function validateEmitterMaterial(
   // rules below only apply to graph-backed materials.
   const isSpriteMaster = material.shaderId === SPRITE_MASTER_VALIDATION_ID;
   const graph = resolveMaterialGraph(material.shaderId, options);
-  const structure = graph ? analyzeShaderGraphStructure(graph) : null;
+  const structure = graph ? analyzeShaderGraphStructure(graph, material) : null;
   // missing-MainTex / missing-material (blocker): only materials that actually
   // sample the shared MainTex/fallback texture need one. Procedural graphs such
-  // as panned noise + gradient ramp + spherical opacity render without MainTex.
+  // as panned noise + gradient ramp + spherical opacity render without MainTex,
+  // and so do graphs whose texture nodes all bind their own textures (a
+  // `RealTex` parameter, or a texture picked on the node itself).
   const requiresMainTexture =
     isSpriteMaster ||
     (structure
@@ -857,26 +910,28 @@ function validateSamplerCap(
   collector: ValidationCollector,
 ): void {
   const path = `emitters.${emitterIndex}.render.material`;
-  if (structure.samplerTaps > MATERIAL_SAMPLER_CAP) {
-    // Over the hard ceiling → blocker.
+  if (
+    structure.samplerTaps > MATERIAL_SAMPLER_CAP ||
+    structure.nodeSamplers > MATERIAL_MAX_NODE_SAMPLERS
+  ) {
+    // Over what the compiled shader can bind → blocker.
     addIssueAndBlocker(
       collector,
       "material-sampler-cap",
       path,
-      `Material taps ${structure.samplerTaps} textures simultaneously; the renderer allows at most ${MATERIAL_SAMPLER_CAP} (techspec §6.4, §9).`,
+      `Material taps ${structure.samplerTaps} textures simultaneously; the renderer allows at most ${MATERIAL_SAMPLER_CAP} (MainTex + ${MATERIAL_MAX_NODE_SAMPLERS} per-node textures) (techspec §6.4, §9).`,
     );
     return;
   }
   if (structure.samplerTaps >= MATERIAL_SAMPLER_DESIGN) {
-    // At/over the design target but under the hard cap → warning. The tight
-    // uTexture+uRamp+uMask=3 case sits exactly at the design budget and so
-    // leaves no sampler headroom (techspec §6.4 — flag it).
+    // Renders fine, but each tap is a full texture fetch per overdrawn
+    // particle pixel → warn about mobile bandwidth (techspec §6.4).
     addIssue(
       collector,
       "warning",
       "material-sampler-cap",
       path,
-      `Material taps ${structure.samplerTaps} textures; the design budget is ${MATERIAL_SAMPLER_DESIGN} (uTexture+uRamp+uMask), leaving no sampler headroom (techspec §6.4).`,
+      `Material taps ${structure.samplerTaps} textures; ${MATERIAL_SAMPLER_DESIGN} or more per particle is expensive under overdraw on mobile — consider merging samples (limit ${MATERIAL_SAMPLER_CAP}, techspec §6.4).`,
     );
   }
 }

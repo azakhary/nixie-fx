@@ -654,6 +654,128 @@ describe("vfx material validation", () => {
     );
   });
 
+  it("does not require MainTex when the only texture node is wired to another texture parameter (RealTex)", () => {
+    // Shape of the real M_FlickeringParticle: MainTex is declared but unused;
+    // the textureSample's `tex` input comes from a second texture param.
+    const graph = makeGraph(
+      "M_Flicker",
+      [
+        {
+          id: "sample",
+          type: "textureSample",
+          inputs: { uv: null, tex: "e-real-tex" },
+        },
+      ],
+      [
+        { name: "MainTex", type: "texture" },
+        { name: "RealTex", type: "texture" },
+      ],
+    ) as { nodes: unknown[]; edges: unknown[] };
+    graph.nodes.push({
+      id: "real",
+      type: "param",
+      inputs: {},
+      params: { name: "RealTex" },
+      position: { x: 0, y: 0 },
+    });
+    graph.edges.push({
+      id: "e-real-tex",
+      source: "real",
+      sourceHandle: "out",
+      target: "sample",
+      targetHandle: "tex",
+    });
+
+    const withOverride = validateVfxAuthoringEffect(
+      materialEffect(
+        materialEmitter("M_Flicker", {
+          paramOverrides: { RealTex: "fx/thorn.png" },
+        }),
+      ),
+      { materialGraphs: { M_Flicker: graph } },
+    );
+    expect(
+      withOverride.blockers.filter((b) => b.code === "missing-material"),
+    ).toEqual([]);
+
+    // With RealTex unset the node has nothing to read → compiler falls back to
+    // MainTex → the missing-MainTex blocker is legitimate again.
+    const withoutOverride = validateVfxAuthoringEffect(
+      materialEffect(materialEmitter("M_Flicker")),
+      { materialGraphs: { M_Flicker: graph } },
+    );
+    expect(withoutOverride.blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "missing-material",
+          path: "emitters.0.render.material.mainTex",
+        }),
+      ]),
+    );
+  });
+
+  it("does not require MainTex when every texture node picks its own texture inline", () => {
+    // Shape of the real M_Beam: noise/gradient/mask textures chosen on the
+    // nodes themselves, no parameter wiring, MainTex never read.
+    const graph = makeGraph(
+      "M_Inline",
+      [
+        { id: "noise", type: "textureSample", params: { tex: "fx/noise.png" } },
+        { id: "ramp", type: "textureSample", params: { tex: "fx/ramp.png" } },
+      ],
+      [{ name: "MainTex", type: "texture" }],
+    );
+    const result = validateVfxAuthoringEffect(
+      materialEffect(materialEmitter("M_Inline")),
+      { materialGraphs: { M_Inline: graph } },
+    );
+
+    expect(
+      result.blockers.filter((b) => b.code === "missing-material"),
+    ).toEqual([]);
+  });
+
+  it("still requires MainTex when a texture node is wired to the MainTex parameter", () => {
+    const graph = makeGraph(
+      "M_Main",
+      [
+        {
+          id: "sample",
+          type: "textureSample",
+          inputs: { uv: null, tex: "e-main-tex" },
+        },
+      ],
+      [{ name: "MainTex", type: "texture" }],
+    ) as { nodes: unknown[]; edges: unknown[] };
+    graph.nodes.push({
+      id: "main",
+      type: "param",
+      inputs: {},
+      params: { name: "MainTex" },
+      position: { x: 0, y: 0 },
+    });
+    graph.edges.push({
+      id: "e-main-tex",
+      source: "main",
+      sourceHandle: "out",
+      target: "sample",
+      targetHandle: "tex",
+    });
+    const result = validateVfxAuthoringEffect(
+      materialEffect(materialEmitter("M_Main")),
+      { materialGraphs: { M_Main: graph } },
+    );
+
+    expect(result.blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "missing-material",
+          path: "emitters.0.render.material.mainTex",
+        }),
+      ]),
+    );
+  });
+
   it("accepts a textureless procedural material with no MainTex fallback", () => {
     const graph = makeGraph("M_Procedural", [
       { id: "uv", type: "uv" },
@@ -757,7 +879,7 @@ describe("vfx material validation", () => {
     );
   });
 
-  it("warns at the design sampler budget (uTexture+uRamp+uMask = 3 taps)", () => {
+  it("accepts three taps silently (well inside the sampler budget)", () => {
     const graph = makeGraph("M_Tight", [
       { id: "tex", type: "textureSample" },
       { id: "ramp", type: "textureSample" },
@@ -773,6 +895,26 @@ describe("vfx material validation", () => {
     );
 
     expect(result.blockers).toEqual([]);
+    expect(
+      result.warnings.filter((issue) => issue.code === "material-sampler-cap"),
+    ).toEqual([]);
+  });
+
+  it("warns (not blocks) at six taps — the mobile bandwidth budget", () => {
+    const graph = makeGraph(
+      "M_Six",
+      Array.from({ length: 6 }, (_, i) => ({
+        id: `t${i}`,
+        type: "textureSample",
+        params: { tex: `fx/noise${i}.png` },
+      })),
+    );
+    const result = validateVfxAuthoringEffect(
+      materialEffect(materialEmitter("M_Six")),
+      { materialGraphs: { M_Six: graph } },
+    );
+
+    expect(result.blockers).toEqual([]);
     expect(result.warnings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -783,14 +925,57 @@ describe("vfx material validation", () => {
     );
   });
 
-  it("blocks a material that taps more than four textures simultaneously", () => {
-    const graph = makeGraph("M_TooMany", [
-      { id: "t0", type: "textureSample" },
-      { id: "t1", type: "textureSample" },
-      { id: "t2", type: "textureSample" },
-      { id: "t3", type: "textureSample" },
-      { id: "t4", type: "textureSample" },
+  it("accepts MainTex plus seven per-node textures (the compiler's exact capacity)", () => {
+    const graph = makeGraph("M_Eight", [
+      { id: "main", type: "textureSample" },
+      ...Array.from({ length: 7 }, (_, i) => ({
+        id: `t${i}`,
+        type: "textureSample",
+        params: { tex: `fx/noise${i}.png` },
+      })),
     ]);
+    const result = validateVfxAuthoringEffect(
+      materialEffect(
+        materialEmitter("M_Eight", {
+          mainTex: { type: "texture", id: "tex", path: "fx/spark.png" },
+        }),
+      ),
+      { materialGraphs: { M_Eight: graph } },
+    );
+
+    expect(result.blockers).toEqual([]);
+  });
+
+  it("blocks eight per-node textures (one more than the compiler can bind)", () => {
+    const graph = makeGraph(
+      "M_TooManyNodes",
+      Array.from({ length: 8 }, (_, i) => ({
+        id: `t${i}`,
+        type: "textureSample",
+        params: { tex: `fx/noise${i}.png` },
+      })),
+    );
+    const result = validateVfxAuthoringEffect(
+      materialEffect(materialEmitter("M_TooManyNodes")),
+      { materialGraphs: { M_TooManyNodes: graph } },
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "material-sampler-cap" }),
+      ]),
+    );
+  });
+
+  it("blocks a material that taps more than eight textures simultaneously", () => {
+    const graph = makeGraph(
+      "M_TooMany",
+      Array.from({ length: 9 }, (_, i) => ({
+        id: `t${i}`,
+        type: "textureSample",
+      })),
+    );
     const result = validateVfxAuthoringEffect(
       materialEffect(
         materialEmitter("M_TooMany", {
