@@ -1,4 +1,10 @@
-import { Application, Rectangle, Texture } from "pixi.js";
+import {
+  Application,
+  Particle,
+  ParticleContainer,
+  Rectangle,
+  Texture,
+} from "pixi.js";
 import {
   createMaterialInstance,
   normalizeShaderGraph,
@@ -153,6 +159,18 @@ export async function sampleMultipleTextures() {
       const instance = renderer.createEffect(effect);
       const sample = (stage: string, second: number[]) => {
         renderer.update(0.01, 0.1);
+        // The restored shader multiplies graph output by the submitted particle tint.
+        // Include seed-based brightness grain in the oracle, before framebuffer clamping.
+        const particle = instance.root.children
+          .filter(
+            (child): child is ParticleContainer =>
+              child instanceof ParticleContainer,
+          )
+          .flatMap((container) => container.particleChildren)[0];
+        if (!(particle instanceof Particle))
+          throw new Error("Expected a live particle for the texture smoke");
+        const tint = particle.tint as number;
+        const modulation = [(tint >> 16) & 255, (tint >> 8) & 255, tint & 255];
         const pixel = app.renderer.extract.pixels({
           target: app.stage,
           frame: new Rectangle(32, 32, 1, 1),
@@ -163,13 +181,15 @@ export async function sampleMultipleTextures() {
               0,
               Math.min(
                 255,
-                operation === "add"
+                ((operation === "add"
                   ? v + second[i]!
                   : operation === "multiply"
                     ? (v * second[i]!) / 255
                     : operation === "subtract"
                       ? v - second[i]!
-                      : (v + second[i]!) / 2,
+                      : (v + second[i]!) / 2) *
+                  modulation[i]!) /
+                  255,
               ),
             ),
           ),

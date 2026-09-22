@@ -52,7 +52,7 @@ describe("vfx export writer", () => {
     expect(
       resolveProjectOutputDirectory(projectRoot, "../game-vfx", true),
     ).toMatchObject({
-      absolutePath: resolve(workspaceRoot, "game-vfx"),
+      absolutePath: resolve(workspaceRoot, "game-vfx").replace(/\\/g, "/"),
       relativePath: "../game-vfx",
     });
   });
