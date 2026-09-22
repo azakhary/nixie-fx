@@ -56,10 +56,59 @@ contains `vfx-editor.prj`, or pass the project folder explicitly:
 npx nixie-fx effect create --project ./my-vfx --name "Fire Burst" --profile pixi-ui-2d
 npx nixie-fx validate ./my-vfx
 npx nixie-fx export ./my-vfx
+npx nixie-fx export-status ./my-vfx
 ```
 
 `effect create` refuses to overwrite an existing effect. `validate` is
 read-only, while `export` writes the project's configured `out/vfx` bundle.
+
+`export-status` is read-only and always exits 0. It prints one line per
+authored effect — `exported`, `stale` (the source changed since the export) or
+`unexported` — plus `orphaned` for exported effects whose source is gone:
+
+```text
+Export generated 2026-09-01T00:00:00.000Z (out/vfx).
+fire.json   exported    fire
+smoke.json  stale       smoke
+ember.json  unexported  -
+1 up to date, 1 stale, 1 unexported, 0 orphaned.
+Run "nixie-fx export" to refresh the bundle.
+```
+
+The same comparison is available to applications and tools as a pure,
+browser-safe function that takes an already-parsed manifest and the authored
+JSON the caller has read:
+
+```ts
+import { compareVfxExportToSources } from "nixie-fx/export";
+
+const comparison = compareVfxExportToSources(manifest, [
+  { path: "fire.json", source: fireJson },
+]);
+comparison.effects; // [{ path, status, sourceHash, exportedPath, effectId, ... }]
+comparison.orphans; // exported effects with no authored source
+comparison.outOfDate; // true when anything is stale, unexported or orphaned
+```
+
+It reuses the exporter's own per-effect source hash, so `exported` means the
+bundle is byte-for-byte current for that effect.
+
+### Exporting a single effect
+
+Exporting one effect (the editor's per-effect export, or `effectFile` in the
+writer options) is incremental: it recompiles and re-validates only that
+effect and merges the result into the bundle already in the output folder
+instead of rewriting it. Other effects keep their compiled files, their
+manifest entries and their validation, assets that no effect references any
+more are pruned, and the manifest's `generatedAt` and aggregate `sourceHash`
+are refreshed so `loadVfxExportBundle` still accepts the bundle. Problems in
+another effect cannot block it, and a blocked single-effect export writes
+`export-diagnostics.json` while leaving the existing bundle untouched. A full
+export (no `effectFile`) still wipes and rewrites the whole output folder.
+
+A subfolder that contains its own `vfx-editor.prj` is a separate project: the
+parent project's export walks past it, along with the parent's own output
+folder.
 
 ## Runtime integration
 

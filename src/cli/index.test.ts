@@ -258,7 +258,92 @@ describe("nixie-fx CLI", () => {
     );
     expect(output.stderr).toEqual([]);
   });
+
+  it("reports export status for exported, stale and unexported effects", async () => {
+    const root = await createProject();
+    await writeJson(join(root, "effects/fire.json"), effectSource("fire"));
+    await writeJson(join(root, "effects/smoke.json"), effectSource("smoke"));
+    expect(
+      await runNixieFxCli(["export", root], captureOutput().environment),
+    ).toBe(0);
+
+    // smoke drifts from the bundle; ember was never exported.
+    await writeJson(join(root, "effects/smoke.json"), effectSource("smoke", 5));
+    await writeJson(join(root, "effects/ember.json"), effectSource("ember"));
+    const output = captureOutput();
+
+    expect(
+      await runNixieFxCli(["export-status", root], output.environment),
+    ).toBe(0);
+    expect(output.stderr).toEqual([]);
+    const lines = output.stdout.join("\n");
+    expect(lines).toContain("fire.json");
+    expect(lines).toMatch(/fire\.json\s+exported\s+fire/);
+    expect(lines).toMatch(/smoke\.json\s+stale\s+smoke/);
+    expect(lines).toMatch(/ember\.json\s+unexported/);
+    expect(last(output.stdout)).toBe(
+      'Run "nixie-fx export" to refresh the bundle.',
+    );
+  });
+
+  it("reports a missing export bundle and exits 0", async () => {
+    const root = await createProject();
+    await writeJson(join(root, "effects/fire.json"), effectSource("fire"));
+    const output = captureOutput();
+
+    expect(
+      await runNixieFxCli(["export-status", root], output.environment),
+    ).toBe(0);
+    expect(output.stdout[0]).toContain("No export manifest at");
+    expect(output.stdout.join("\n")).toMatch(/fire\.json\s+unexported/);
+  });
+
+  it("skips nested projects when listing and exporting effects", async () => {
+    const root = await createProject();
+    await writeJson(join(root, "effects/fire.json"), effectSource("fire"));
+    await writeJson(join(root, "effects/3d/vfx-editor.prj"), {
+      app: "vfx-editor",
+      kind: "project",
+      version: 1,
+      id: "nested",
+      name: "Nested",
+      settings: {
+        effectDataPath: ".",
+        outputPath: "out/vfx",
+        assetRootPath: ".",
+        materialsFolder: "materials",
+        allowExternalOutput: false,
+      },
+      createdAt: "2026-08-15T00:00:00.000Z",
+      updatedAt: "2026-08-15T00:00:00.000Z",
+    });
+    await writeJson(join(root, "effects/3d/nested.json"), {
+      ...effectSource("nested"),
+      emitters: [{ id: "emitter", render: { texture: "only-in-nested.png" } }],
+    });
+    const output = captureOutput();
+
+    expect(await runNixieFxCli(["export", root], output.environment)).toBe(0);
+    expect(last(output.stdout)).toBe("Exported 1 effect to out/vfx.");
+
+    const statusOutput = captureOutput();
+    expect(
+      await runNixieFxCli(["export-status", root], statusOutput.environment),
+    ).toBe(0);
+    expect(statusOutput.stdout.join("\n")).not.toContain("nested.json");
+  });
 });
+
+function effectSource(id: string, gravity = 0): Record<string, unknown> {
+  return {
+    app: "vfx-editor",
+    kind: "particle-effect",
+    version: 1,
+    id,
+    name: id,
+    emitters: [{ id: `${id}-emitter`, forces: { gravity } }],
+  };
+}
 
 async function createProject(
   settings: Record<string, unknown> = {},

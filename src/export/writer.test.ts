@@ -19,6 +19,7 @@ import {
   resolveProjectOutputDirectory,
 } from "./writer";
 import { writeVfxExportFromProject } from "./nodeWriter";
+import { loadVfxExportBundle } from "./loader";
 import { VFX_ASSET_REDIRECTS_FILE } from "../runtime/assets/assetRedirects";
 
 const tempRoots: string[] = [];
@@ -752,12 +753,295 @@ describe("vfx export writer", () => {
       false,
     );
   });
+
+  describe("incremental single-effect export", () => {
+    const createTwoEffectProject = (): string => {
+      const projectRoot = createTempProject();
+      writeJson(resolve(projectRoot, "particle-data/effects/fire.json"), {
+        id: "fire",
+        name: "Fire",
+        emitters: [{ id: "fire-emitter", render: { texture: "fire.png" } }],
+      });
+      writeJson(resolve(projectRoot, "particle-data/effects/smoke.json"), {
+        id: "smoke",
+        name: "Smoke",
+        emitters: [{ id: "smoke-emitter", render: { texture: "smoke.png" } }],
+      });
+      mkdirSync(resolve(projectRoot, "assets"), { recursive: true });
+      writeFileSync(resolve(projectRoot, "assets/fire.png"), "fire");
+      writeFileSync(resolve(projectRoot, "assets/smoke.png"), "smoke");
+      return projectRoot;
+    };
+
+    const exportOptions = (projectRoot: string) => ({
+      projectRoot,
+      effectDataPath: "particle-data/effects",
+      assetRootPath: "assets",
+      outputPath: "out/vfx",
+    });
+
+    it("keeps the other effects and their assets in the bundle", async () => {
+      const projectRoot = createTwoEffectProject();
+      await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        generatedAt: "2026-06-15T00:00:00.000Z",
+      });
+
+      writeJson(resolve(projectRoot, "particle-data/effects/smoke.json"), {
+        id: "smoke",
+        name: "Smoke",
+        emitters: [
+          {
+            id: "smoke-emitter",
+            render: { texture: "smoke.png" },
+            forces: { gravity: -1 },
+          },
+        ],
+      });
+      const result = await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        effectFile: "smoke.json",
+        generatedAt: "2026-06-16T00:00:00.000Z",
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.effectCount).toBe(1);
+      expect(
+        existsSync(resolve(projectRoot, "out/vfx/effects/fire.json")),
+      ).toBe(true);
+      expect(existsSync(resolve(projectRoot, "out/vfx/fire.png"))).toBe(true);
+
+      const manifest = readJson(
+        resolve(projectRoot, "out/vfx/manifest.json"),
+      ) as {
+        generatedAt: string;
+        effects: { path: string }[];
+        assets: { path: string }[];
+      };
+      expect(manifest.generatedAt).toBe("2026-06-16T00:00:00.000Z");
+      expect(manifest.effects.map((entry) => entry.path)).toEqual([
+        "effects/fire.json",
+        "effects/smoke.json",
+      ]);
+      expect(manifest.assets.map((asset) => asset.path).sort()).toEqual([
+        "fire.png",
+        "smoke.png",
+      ]);
+      // Carried effect files are refreshed to the manifest's generatedAt so the
+      // loader's manifest/effect consistency check still passes.
+      const fire = readJson(
+        resolve(projectRoot, "out/vfx/effects/fire.json"),
+      ) as { generatedAt: string; id: string };
+      expect(fire.generatedAt).toBe("2026-06-16T00:00:00.000Z");
+      expect(fire.id).toBe("fire");
+    });
+
+    it("produces a merged manifest the official loader accepts", async () => {
+      const projectRoot = createTwoEffectProject();
+      await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        generatedAt: "2026-06-15T00:00:00.000Z",
+      });
+      await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        effectFile: "smoke.json",
+        generatedAt: "2026-06-16T00:00:00.000Z",
+      });
+
+      const manifest = readJson(
+        resolve(projectRoot, "out/vfx/manifest.json"),
+      ) as { effects: { path: string }[]; assets: { path: string }[] };
+      const bundle = loadVfxExportBundle(
+        {
+          manifest,
+          effectsByPath: Object.fromEntries(
+            manifest.effects.map((entry) => [
+              entry.path,
+              readJson(resolve(projectRoot, "out/vfx", entry.path)),
+            ]),
+          ),
+          assetPaths: manifest.assets.map((asset) => asset.path),
+        },
+        { requireEveryAsset: true },
+      );
+
+      expect([...bundle.effectsById.keys()].sort()).toEqual(["fire", "smoke"]);
+    });
+
+    it("prunes assets no longer referenced by any exported effect", async () => {
+      const projectRoot = createTwoEffectProject();
+      await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        generatedAt: "2026-06-15T00:00:00.000Z",
+      });
+      expect(existsSync(resolve(projectRoot, "out/vfx/smoke.png"))).toBe(true);
+
+      writeJson(resolve(projectRoot, "particle-data/effects/smoke.json"), {
+        id: "smoke",
+        name: "Smoke",
+        emitters: [{ id: "smoke-emitter", render: { texture: "fire.png" } }],
+      });
+      const result = await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        effectFile: "smoke.json",
+        generatedAt: "2026-06-16T00:00:00.000Z",
+      });
+
+      expect(result.ok).toBe(true);
+      expect(existsSync(resolve(projectRoot, "out/vfx/smoke.png"))).toBe(false);
+      // fire.png is still referenced by the carried fire effect.
+      expect(existsSync(resolve(projectRoot, "out/vfx/fire.png"))).toBe(true);
+      expect(
+        result.writtenFiles.filter((file) => file.kind === "removed"),
+      ).toEqual([{ kind: "removed", path: "out/vfx/smoke.png", bytes: 0 }]);
+      const manifest = readJson(
+        resolve(projectRoot, "out/vfx/manifest.json"),
+      ) as { assets: { path: string }[] };
+      expect(manifest.assets.map((asset) => asset.path)).toEqual(["fire.png"]);
+    });
+
+    it("leaves the existing bundle intact when the requested effect is blocked", async () => {
+      const projectRoot = createTwoEffectProject();
+      await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        generatedAt: "2026-06-15T00:00:00.000Z",
+      });
+      const before = readFileSync(
+        resolve(projectRoot, "out/vfx/manifest.json"),
+        "utf8",
+      );
+
+      writeJson(resolve(projectRoot, "particle-data/effects/smoke.json"), {
+        id: "smoke",
+        name: "Smoke",
+        emitters: [
+          { id: "smoke-emitter", render: { texture: "missing/gone.png" } },
+        ],
+      });
+      const result = await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        effectFile: "smoke.json",
+        generatedAt: "2026-06-16T00:00:00.000Z",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.blocked).toBe(true);
+      expect(result.writtenFiles.map((file) => file.path)).toEqual([
+        "out/vfx/export-diagnostics.json",
+      ]);
+      expect(
+        readFileSync(resolve(projectRoot, "out/vfx/manifest.json"), "utf8"),
+      ).toBe(before);
+      expect(
+        existsSync(resolve(projectRoot, "out/vfx/effects/fire.json")),
+      ).toBe(true);
+      expect(
+        existsSync(resolve(projectRoot, "out/vfx/effects/smoke.json")),
+      ).toBe(true);
+      expect(existsSync(resolve(projectRoot, "out/vfx/smoke.png"))).toBe(true);
+    });
+
+    it("does not block on another effect's problems", async () => {
+      const projectRoot = createTwoEffectProject();
+      // fire.json references an asset that does not exist: a full export is
+      // blocked, but exporting smoke.json alone must still succeed.
+      writeJson(resolve(projectRoot, "particle-data/effects/fire.json"), {
+        id: "fire",
+        name: "Fire",
+        emitters: [{ id: "fire-emitter", render: { texture: "gone.png" } }],
+      });
+
+      expect(
+        (
+          await writeVfxExportFromProject({
+            ...exportOptions(projectRoot),
+            generatedAt: "2026-06-15T00:00:00.000Z",
+          })
+        ).ok,
+      ).toBe(false);
+
+      const result = await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        effectFile: "smoke.json",
+        generatedAt: "2026-06-16T00:00:00.000Z",
+      });
+      expect(result.ok).toBe(true);
+      expect(result.manifest?.effects.map((entry) => entry.path)).toEqual([
+        "effects/smoke.json",
+      ]);
+    });
+
+    it("recreates a valid bundle when the previous manifest is corrupt", async () => {
+      const projectRoot = createTwoEffectProject();
+      await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        generatedAt: "2026-06-15T00:00:00.000Z",
+      });
+      writeFileSync(
+        resolve(projectRoot, "out/vfx/manifest.json"),
+        "{ not json",
+      );
+
+      const result = await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        effectFile: "smoke.json",
+        generatedAt: "2026-06-16T00:00:00.000Z",
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.manifest?.effects.map((entry) => entry.path)).toEqual([
+        "effects/smoke.json",
+      ]);
+    });
+  });
+
+  it("skips nested projects when walking the effect data path", async () => {
+    const projectRoot = createTempProject();
+    writeJson(resolve(projectRoot, "vfx-editor.prj"), { app: "vfx-editor" });
+    writeJson(resolve(projectRoot, "effects/spark.json"), {
+      id: "spark",
+      name: "Spark",
+      emitters: [{ id: "emitter" }],
+    });
+    // A nested project with its own assets: it owns its export, and its
+    // missing asset must not block the parent's.
+    writeJson(resolve(projectRoot, "3d/vfx-editor.prj"), { app: "vfx-editor" });
+    writeJson(resolve(projectRoot, "3d/effects/nested.json"), {
+      id: "nested",
+      name: "Nested",
+      emitters: [{ id: "emitter", render: { texture: "nested-only.png" } }],
+    });
+    writeJson(resolve(projectRoot, "3d/materials/nested.material"), {
+      id: "M_Nested",
+      name: "Nested Material",
+      nodes: [],
+      edges: [],
+    });
+
+    const result = await writeVfxExportFromProject({
+      projectRoot,
+      effectDataPath: ".",
+      assetRootPath: ".",
+      outputPath: "out/vfx",
+      generatedAt: "2026-06-15T00:00:00.000Z",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.effectCount).toBe(1);
+    expect(result.manifest?.effects.map((entry) => entry.path)).toEqual([
+      "effects/effects/spark.json",
+    ]);
+  });
 });
 
 function createTempProject(): string {
   const root = mkdtempSync(resolve(tmpdir(), "vfx-export-writer-"));
   tempRoots.push(root);
   return root;
+}
+
+function readJson(path: string): unknown {
+  return JSON.parse(readFileSync(path, "utf8")) as unknown;
 }
 
 function writeJson(path: string, data: unknown): void {

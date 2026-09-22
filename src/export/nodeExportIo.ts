@@ -46,5 +46,9 @@ export const nodeExportIo: ExportIo = {
     mkdirSync(path, { recursive: true });
     return Promise.resolve();
   },
+  deleteFile: (path) => {
+    rmSync(path, { force: true });
+    return Promise.resolve();
+  },
   homeDir: () => homedir(),
 };

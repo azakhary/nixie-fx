@@ -38,6 +38,7 @@ Author project data with generated defaults, validate every change, and use the 
 
    ```sh
    npx nixie-fx export .
+   npx nixie-fx export-status .
    ```
 
 10. Open [nixiefx.com/editor](https://nixiefx.com/editor/) in a Chromium-compatible browser, choose **Open Folder**, and select the folder containing `vfx-editor.prj`. Inspect the intended backend preview and refine the effect. Schema validation is not visual approval.

@@ -49,6 +49,44 @@ export async function loadBundle(
 
 Pass `requiredEffectIds` when the application depends on named effects. Pass both `assetPaths` and `requireEveryAsset: true` only when the host can enumerate the deployed files.
 
+## Incremental exports
+
+A bundle can be written one effect at a time. A single-effect export merges the
+recompiled effect into the bundle already on disk: other effects keep their
+compiled files and manifest entries, the manifest's `assets` becomes the union
+of what the surviving effects reference (orphans are deleted from the output
+root), and `generatedAt`, the aggregate `sourceHash` and `validation` are
+recomputed for the merged set. Every effect file is rewritten with the new
+`generatedAt` so the loader's manifest/effect consistency check holds. Each
+manifest effect entry also carries its own `validation`; the manifest's
+top-level `validation` is the union of those.
+
+Consume the result exactly as any other bundle — nothing in the loading code
+above changes.
+
+## Is the bundle current?
+
+`compareVfxExportToSources` (from `nixie-fx/export`, browser-safe, pure) answers
+whether the bundle still matches the authored effect JSON. The caller reads both
+sides and passes them in:
+
+```ts
+import { compareVfxExportToSources } from "nixie-fx/export";
+
+const comparison = compareVfxExportToSources(manifest, [
+  { path: "fire.json", source: fireJson },
+  { path: "nested/smoke.json", source: smokeJson },
+]);
+// comparison.effects[i].status: "exported" | "stale" | "unexported"
+// comparison.orphans: manifest effects whose authored source is gone
+// comparison.outOfDate: true when anything is stale, unexported or orphaned
+```
+
+Statuses use the exporter's own per-effect source hash, so they are exact. Pass
+`null` when no manifest exists; every source is then `unexported`. From a shell,
+`nixie-fx export-status [project-folder]` prints the same table and always
+exits 0.
+
 ## Support and assets
 
 - Reject a manifest whose validation is invalid or whose blockers are non-empty; the loader enforces this.

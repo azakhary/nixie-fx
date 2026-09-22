@@ -170,6 +170,7 @@ export function compileVfxManifest(
       sourceEffectId: compiled.sourceEffectId,
       sourceHash: compiled.sourceHash,
       support: compiled.effect.support,
+      validation: compiled.validation,
     })),
     assets,
     validation,

@@ -103,6 +103,15 @@ export interface VfxManifestEffectEntry {
   sourceEffectId: string;
   sourceHash: string;
   support: VfxExportSupport;
+  /**
+   * This effect's own validation result. The manifest's top-level
+   * `validation` is the union of these, which is what makes an incremental
+   * single-effect export able to recompute the bundle-wide validation exactly:
+   * the requested effect's entry is replaced and every other entry's stored
+   * validation is carried over verbatim. Optional for manifests written before
+   * this field existed; such entries contribute nothing to the merged union.
+   */
+  validation?: VfxValidationResult;
 }
 
 export interface VfxManifestAssetEntry {
@@ -138,7 +147,12 @@ export interface VfxCompiledExport {
 }
 
 export type VfxExportWrittenFileKind =
-  "manifest" | "effect" | "asset" | "diagnostics";
+  | "manifest"
+  | "effect"
+  | "asset"
+  | "diagnostics"
+  /** A file an incremental export pruned from the output folder. */
+  | "removed";
 
 export interface VfxExportWrittenFile {
   kind: VfxExportWrittenFileKind;

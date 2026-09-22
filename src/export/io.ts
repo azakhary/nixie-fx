@@ -23,6 +23,12 @@ export interface ExportIo {
   fileSize(path: string): Promise<number>;
   /** Deletes the folder (if present) and recreates it empty. */
   resetDir(path: string): Promise<void>;
+  /**
+   * Deletes a single file, ignoring a missing target. Optional: incremental
+   * exports use it to prune orphaned assets, and simply keep the stale file
+   * on disk when a backend cannot delete.
+   */
+  deleteFile?(path: string): Promise<void>;
   /** Home folder for `~` expansion; null where the concept does not exist. */
   homeDir(): string | null;
 }

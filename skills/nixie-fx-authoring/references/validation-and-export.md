@@ -32,7 +32,19 @@ effects/*.json
 <declared asset paths, only when effects use assets>
 ```
 
+A subfolder holding its own `vfx-editor.prj` is a separate project; the parent export skips it, so export each project from its own folder.
+
 The manifest is the runtime inventory. It records source hashes, validation, assets, and per-backend support. Assets retain their asset-root-relative paths, so do not assume fixed `textures`, `materials`, or `meshes` folders. An assetless effect produces only the manifest and effect JSON. A blocked export may write diagnostics instead of a usable bundle.
+
+## Check what is stale
+
+`export-status` is read-only, always exits 0, and says whether the bundle still matches the sources:
+
+```sh
+npx nixie-fx export-status .
+```
+
+Each authored effect is reported as `exported`, `stale` (the source changed since the export), or `unexported`; exported effects whose source is gone are reported as `orphaned`. Use it before deciding to re-export, and after an export to confirm nothing is left behind. The same comparison is available to code as `compareVfxExportToSources` from `nixie-fx/export`.
 
 ## Verify the result
 

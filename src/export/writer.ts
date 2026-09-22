@@ -30,12 +30,18 @@ import {
   normalizeShaderGraph,
   type ShaderGraph,
 } from "../runtime/schema/materials";
+import { EDITOR_PROJECT_FILE_NAME } from "../project/settings";
+import { createVfxSourceHash } from "./hash";
 import type { VfxAssetRef } from "../runtime/assets/types";
 import type {
   VfxCompiledEffect,
+  VfxExportedEffect,
+  VfxExportManifest,
   VfxExportWriteDiagnostics,
   VfxExportWriteResult,
   VfxExportWrittenFile,
+  VfxManifestAssetEntry,
+  VfxManifestEffectEntry,
 } from "./schema";
 
 const MANIFEST_FILE = "manifest.json";
@@ -106,6 +112,10 @@ export async function writeVfxExportWithIo(
     assetRoot.absolutePath,
     io,
   );
+  // Incremental mode: a single requested effect is compiled, validated and
+  // merged into whatever bundle already sits in the output folder, instead of
+  // wiping and rewriting every effect.
+  const incremental = options.effectFile !== undefined;
   const sourceFiles = selectSourceEffectFiles(
     await listSourceEffectFiles(effectsRoot.absolutePath, io, {
       excludeRoots: [outputRoot.absolutePath],
@@ -116,6 +126,7 @@ export async function writeVfxExportWithIo(
     assetRoot,
     materialsFolder,
     io,
+    { excludeRoots: [outputRoot.absolutePath] },
   );
   const compileInputs: CompileVfxExportInput[] = [];
   for (const file of sourceFiles) {
@@ -144,7 +155,7 @@ export async function writeVfxExportWithIo(
     ),
   ]);
 
-  await io.resetDir(outputRoot.absolutePath);
+  if (!incremental) await io.resetDir(outputRoot.absolutePath);
 
   if (!validation.valid) {
     const diagnostics: VfxExportWriteDiagnostics = {
@@ -184,6 +195,15 @@ export async function writeVfxExportWithIo(
       diagnostics,
     };
   }
+
+  // Incremental merge: read the bundle already on disk, keep every other
+  // effect, and republish it alongside the freshly compiled one.
+  const carried = incremental
+    ? await readCarriedExportEffects(compiled.effects, outputRoot, io)
+    : { effects: [], previousManifest: null };
+  const manifest = incremental
+    ? mergeIncrementalManifest(compiled.manifest, carried.effects, generatedAt)
+    : compiled.manifest;
 
   const writtenFiles: VfxExportWrittenFile[] = [];
   for (const effect of compiled.effects) {
@@ -226,11 +246,35 @@ export async function writeVfxExportWithIo(
       ),
     );
   }
+  // Carried effect files only ever change in `generatedAt`, which the loader
+  // requires to equal the manifest's. Their `sourceHash` is untouched, so the
+  // bundle stays a faithful export of unchanged sources.
+  for (const entry of carried.effects) {
+    writtenFiles.push(
+      await writeJsonFile(
+        outputRoot.absolutePath,
+        entry.manifestEntry.path,
+        { ...entry.effect, generatedAt },
+        { kind: "effect", projectOutputPath: outputRoot.relativePath },
+        io,
+      ),
+    );
+  }
+  if (incremental) {
+    writtenFiles.push(
+      ...(await deleteOrphanExportFiles(
+        carried.previousManifest,
+        manifest,
+        outputRoot,
+        io,
+      )),
+    );
+  }
   writtenFiles.push(
     await writeJsonFile(
       outputRoot.absolutePath,
       MANIFEST_FILE,
-      compiled.manifest,
+      manifest,
       {
         kind: "manifest",
         projectOutputPath: outputRoot.relativePath,
@@ -250,8 +294,258 @@ export async function writeVfxExportWithIo(
     effectCount: compiled.effects.length,
     writtenFiles,
     validation,
-    manifest: compiled.manifest,
+    manifest,
   };
+}
+
+interface CarriedExportEffect {
+  manifestEntry: VfxManifestEffectEntry;
+  effect: VfxExportedEffect;
+}
+
+interface CarriedExportBundle {
+  effects: CarriedExportEffect[];
+  previousManifest: VfxExportManifest | null;
+}
+
+/**
+ * Reads the manifest already in the output folder and returns every effect that
+ * must survive an incremental export: the ones the newly compiled effects do
+ * NOT replace and whose compiled file is still readable on disk. A missing or
+ * corrupt manifest (or effect file) is treated as "nothing to carry" rather
+ * than an error, so a broken output folder always heals into a valid bundle.
+ */
+async function readCarriedExportEffects(
+  compiled: readonly VfxCompiledEffect[],
+  outputRoot: ProjectRelativeDirectory,
+  io: ExportIo,
+): Promise<CarriedExportBundle> {
+  const previousManifest = await readExistingExportManifest(
+    outputRoot.absolutePath,
+    io,
+  );
+  if (!previousManifest) return { effects: [], previousManifest: null };
+
+  const replacedPaths = new Set(compiled.map((entry) => entry.path));
+  const replacedSourceIds = new Set(
+    compiled.map((entry) => entry.sourceEffectId),
+  );
+  const replacedIds = new Set(compiled.map((entry) => entry.effect.id));
+  const effects: CarriedExportEffect[] = [];
+  for (const entry of previousManifest.effects) {
+    if (
+      replacedPaths.has(entry.path) ||
+      replacedSourceIds.has(entry.sourceEffectId) ||
+      replacedIds.has(entry.id)
+    ) {
+      continue;
+    }
+    const effect = await readExportedEffectFile(
+      outputRoot.absolutePath,
+      entry.path,
+      io,
+    );
+    // A manifest entry whose compiled file vanished cannot be carried: keeping
+    // it would produce a manifest the loader rejects.
+    if (!effect || effect.sourceHash !== entry.sourceHash) continue;
+    effects.push({ manifestEntry: entry, effect });
+  }
+  return { effects, previousManifest };
+}
+
+/**
+ * Merges the freshly compiled single-effect manifest with the carried entries.
+ *
+ * - `effects`: carried entries first (in their previous order), then the
+ *   compiled ones, so re-exporting one effect does not reshuffle the bundle.
+ * - `assets`: union of the effect files' own asset lists, deduped by path
+ *   (the loader requires unique asset paths). Assets no longer referenced by
+ *   any surviving effect simply fall out of the union.
+ * - `validation`: union of the per-entry validations, which is exactly what a
+ *   full export writes. Entries from a pre-0.1.11 manifest carry no stored
+ *   validation and therefore contribute nothing.
+ * - `sourceHash`: recomputed over the merged `{path, sourceHash}` list, which
+ *   is the value `loadVfxExportBundle` recomputes and compares.
+ */
+function mergeIncrementalManifest(
+  compiledManifest: VfxExportManifest,
+  carried: readonly CarriedExportEffect[],
+  generatedAt: string,
+): VfxExportManifest {
+  const effects: VfxManifestEffectEntry[] = [
+    ...carried.map((entry) => entry.manifestEntry),
+    ...compiledManifest.effects,
+  ];
+  const assets = dedupeExportAssets([
+    ...carried.flatMap((entry) => entry.effect.assets),
+    ...compiledManifest.assets,
+  ]);
+  return {
+    ...compiledManifest,
+    generatedAt,
+    sourceHash: createVfxSourceHash(
+      effects.map((entry) => ({
+        path: entry.path,
+        sourceHash: entry.sourceHash,
+      })),
+    ),
+    effects,
+    assets,
+    validation: mergeVfxValidationResults(
+      effects.map(
+        (entry) => entry.validation ?? createVfxValidationResult([], []),
+      ),
+    ),
+  };
+}
+
+function dedupeExportAssets(
+  assets: readonly (VfxAssetRef | VfxManifestAssetEntry)[],
+): VfxManifestAssetEntry[] {
+  const byPath = new Map<string, VfxManifestAssetEntry>();
+  for (const asset of assets) {
+    if (byPath.has(asset.path)) continue;
+    byPath.set(asset.path, {
+      id: asset.id,
+      type: asset.type,
+      path: asset.path,
+    });
+  }
+  return [...byPath.values()];
+}
+
+/**
+ * Deletes files the previous manifest declared and the merged one no longer
+ * does — orphaned assets plus compiled effect files of replaced/renamed
+ * entries. Only paths that resolve INSIDE the output root are touched, and a
+ * backend without `deleteFile` keeps the stale files instead.
+ */
+async function deleteOrphanExportFiles(
+  previousManifest: VfxExportManifest | null,
+  manifest: VfxExportManifest,
+  outputRoot: ProjectRelativeDirectory,
+  io: ExportIo,
+): Promise<VfxExportWrittenFile[]> {
+  const deleteFile = io.deleteFile?.bind(io);
+  if (!previousManifest || !deleteFile) return [];
+  const keptAssets = new Set(manifest.assets.map((asset) => asset.path));
+  const keptEffects = new Set(manifest.effects.map((entry) => entry.path));
+  const orphans = [
+    ...previousManifest.assets
+      .filter((asset) => !keptAssets.has(asset.path))
+      .map((asset) => asset.path),
+    ...previousManifest.effects
+      .filter((entry) => !keptEffects.has(entry.path))
+      .map((entry) => entry.path),
+  ];
+
+  const removed: VfxExportWrittenFile[] = [];
+  for (const path of orphans) {
+    let target: string;
+    try {
+      target = resolve(
+        outputRoot.absolutePath,
+        normalizeSafeProjectRelativePath(path, "Export file path"),
+      );
+      assertPathInside(
+        outputRoot.absolutePath,
+        target,
+        "Export file path escapes output folder",
+      );
+    } catch {
+      continue;
+    }
+    if (!(await io.isFile(target))) continue;
+    await deleteFile(target);
+    removed.push({
+      kind: "removed",
+      path: `${outputRoot.relativePath}/${path}`.replace(/\\/g, "/"),
+      bytes: 0,
+    });
+  }
+  return removed;
+}
+
+async function readExistingExportManifest(
+  outputRoot: string,
+  io: ExportIo,
+): Promise<VfxExportManifest | null> {
+  const target = resolve(outputRoot, MANIFEST_FILE);
+  if (!(await io.isFile(target))) return null;
+  try {
+    const parsed = JSON.parse(
+      await io.readTextFile(target),
+    ) as VfxExportManifest;
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      parsed.kind !== "vfx-manifest" ||
+      !Array.isArray(parsed.effects) ||
+      !Array.isArray(parsed.assets)
+    ) {
+      return null;
+    }
+    return {
+      ...parsed,
+      effects: parsed.effects.filter(isUsableManifestEffectEntry),
+      assets: parsed.assets.filter(
+        (asset): asset is VfxManifestAssetEntry =>
+          !!asset && typeof asset.path === "string",
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isUsableManifestEffectEntry(
+  entry: VfxManifestEffectEntry,
+): entry is VfxManifestEffectEntry {
+  return (
+    !!entry &&
+    typeof entry.id === "string" &&
+    typeof entry.path === "string" &&
+    typeof entry.sourceHash === "string" &&
+    typeof entry.sourceEffectId === "string"
+  );
+}
+
+async function readExportedEffectFile(
+  outputRoot: string,
+  path: string,
+  io: ExportIo,
+): Promise<VfxExportedEffect | null> {
+  let target: string;
+  try {
+    target = resolve(
+      outputRoot,
+      normalizeSafeProjectRelativePath(path, "Export file path"),
+    );
+    assertPathInside(
+      outputRoot,
+      target,
+      "Export file path escapes output folder",
+    );
+  } catch {
+    return null;
+  }
+  if (!(await io.isFile(target))) return null;
+  try {
+    const parsed = JSON.parse(
+      await io.readTextFile(target),
+    ) as VfxExportedEffect;
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      parsed.kind !== "vfx-effect" ||
+      !Array.isArray(parsed.assets)
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 export function resolveProjectExportDirectory(
@@ -375,6 +669,7 @@ async function listSourceEffectFiles(
         ) {
           continue;
         }
+        if (await isNestedProjectDirectory(absolutePath, io)) continue;
         await walk(absolutePath);
         continue;
       }
@@ -400,6 +695,19 @@ async function listSourceEffectFiles(
   return files.sort((a, b) =>
     a.relativePath.localeCompare(b.relativePath, undefined, { numeric: true }),
   );
+}
+
+/**
+ * A subfolder holding its own `vfx-editor.prj` is a separate project (e.g. a
+ * `3d/` subproject inside a `vfx/` project). Its effects, materials and assets
+ * belong to that project's own export, so the parent walks past it — otherwise
+ * the parent's export blocks on assets it does not own.
+ */
+async function isNestedProjectDirectory(
+  directory: string,
+  io: ExportIo,
+): Promise<boolean> {
+  return io.isFile(resolve(directory, EDITOR_PROJECT_FILE_NAME));
 }
 
 async function hasParticleEffectEnvelope(
@@ -447,8 +755,10 @@ async function listProjectMaterialContext(
   assetRoot: ProjectRelativeDirectory,
   materialsFolder: string,
   io: ExportIo,
+  options: { excludeRoots?: readonly string[] } = {},
 ): Promise<ProjectMaterialContext> {
   const root = resolve(assetRoot.absolutePath, materialsFolder);
+  const excluded = (options.excludeRoots ?? []).map((path) => resolve(path));
   const graphs: Record<string, ShaderGraph> = {};
   const assetPaths: Record<string, string> = {};
   if (!(await io.exists(root))) return { graphs, assetPaths };
@@ -459,6 +769,16 @@ async function listProjectMaterialContext(
       if (entry.name.startsWith(".")) continue;
       const absolutePath = resolve(directory, entry.name);
       if (entry.isDirectory) {
+        if (
+          excluded.some(
+            (exclude) =>
+              absolutePath === exclude ||
+              !relative(exclude, absolutePath).startsWith(".."),
+          )
+        ) {
+          continue;
+        }
+        if (await isNestedProjectDirectory(absolutePath, io)) continue;
         await walk(absolutePath);
         continue;
       }

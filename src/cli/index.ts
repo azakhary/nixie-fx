@@ -16,6 +16,7 @@ import {
   type VfxTargetProfile,
 } from "../engine/particles";
 import { writeVfxExportFromProject } from "../export/nodeWriter";
+import { compareVfxExportToSources } from "../export/status";
 import type {
   VfxExportBlocker,
   VfxValidationIssue,
@@ -54,7 +55,8 @@ type CliCommand =
       profile: VfxTargetProfile;
     }
   | { kind: "validate"; projectPath: string }
-  | { kind: "export"; projectPath: string };
+  | { kind: "export"; projectPath: string }
+  | { kind: "export-status"; projectPath: string };
 
 const TARGET_PROFILES: readonly VfxTargetProfile[] = [
   "pixi-ui-2d",
@@ -68,6 +70,11 @@ Usage:
   nixie-fx effect create --project <folder> --name <name> [--profile <profile>]
   nixie-fx validate [project-folder]
   nixie-fx export [project-folder]
+  nixie-fx export-status [project-folder]
+
+export-status compares the authored effects with the exported bundle and
+prints one line per effect (exported / stale / unexported) plus exported
+effects whose source is gone. It writes nothing and always exits 0.
 
 Profiles:
   pixi-ui-2d (default), three-world-3d, portable`;
@@ -93,6 +100,9 @@ export async function runNixieFxCli(
     }
     if (command.kind === "validate") {
       return await validateProject(loaded, stdout, stderr);
+    }
+    if (command.kind === "export-status") {
+      return await reportExportStatus(loaded, stdout);
     }
     return await exportProject(loaded, stdout, stderr);
   } catch (error) {
@@ -135,7 +145,11 @@ function parseCliCommand(argv: readonly string[]): CliCommand {
     };
   }
 
-  if (argv[0] === "validate" || argv[0] === "export") {
+  if (
+    argv[0] === "validate" ||
+    argv[0] === "export" ||
+    argv[0] === "export-status"
+  ) {
     const parsed = parseOptions(argv.slice(1), ["project"]);
     if (parsed.positionals.length > 1) {
       throw new Error(`Unexpected argument "${parsed.positionals[1]}"`);
@@ -318,8 +332,72 @@ async function exportProject(
   return 0;
 }
 
-async function readEffectSources(effectsRoot: string): Promise<EffectSource[]> {
+async function reportExportStatus(
+  loaded: LoadedProject,
+  stdout: (line: string) => void,
+): Promise<number> {
+  const settings = loaded.project.settings;
+  const effectsRoot = resolveConfiguredDirectory(
+    loaded.root,
+    settings.effectDataPath,
+  );
+  const outputRoot = resolveConfiguredDirectory(
+    loaded.root,
+    settings.outputPath,
+  );
+  const sources = await readEffectSources(effectsRoot, [outputRoot]);
+  const manifest = await readJsonFileOrNull(join(outputRoot, "manifest.json"));
+  const comparison = compareVfxExportToSources(
+    manifest,
+    sources.map((source) => ({
+      path: source.relativePath,
+      source: source.value,
+    })),
+  );
+
+  stdout(
+    comparison.missingManifest
+      ? `No export manifest at ${join(settings.outputPath, "manifest.json")}.`
+      : `Export generated ${comparison.generatedAt ?? "unknown"} (${settings.outputPath}).`,
+  );
+  const width = Math.max(
+    0,
+    ...comparison.effects.map((entry) => entry.path.length),
+    ...comparison.orphans.map((entry) => entry.exportedPath.length),
+  );
+  for (const entry of comparison.effects) {
+    stdout(
+      `${entry.path.padEnd(width)}  ${entry.status.padEnd(10)}  ${entry.effectId ?? "-"}`,
+    );
+  }
+  for (const entry of comparison.orphans) {
+    stdout(
+      `${entry.exportedPath.padEnd(width)}  ${"orphaned".padEnd(10)}  ${entry.effectId}`,
+    );
+  }
+  stdout(
+    `${comparison.counts.exported} up to date, ${comparison.counts.stale} stale, ${comparison.counts.unexported} unexported, ${comparison.counts.orphans} orphaned.`,
+  );
+  if (comparison.outOfDate) {
+    stdout(`Run "nixie-fx export" to refresh the bundle.`);
+  }
+  return 0;
+}
+
+async function readJsonFileOrNull(path: string): Promise<unknown> {
+  try {
+    return JSON.parse(await readFile(path, "utf8")) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+async function readEffectSources(
+  effectsRoot: string,
+  excludeRoots: readonly string[] = [],
+): Promise<EffectSource[]> {
   const sources: EffectSource[] = [];
+  const excluded = excludeRoots.map((root) => resolve(root));
 
   const walk = async (directory: string): Promise<void> => {
     let entries;
@@ -334,6 +412,17 @@ async function readEffectSources(effectsRoot: string): Promise<EffectSource[]> {
       if (entry.name.startsWith(".")) continue;
       const absolutePath = resolve(directory, entry.name);
       if (entry.isDirectory()) {
+        if (
+          excluded.some(
+            (exclude) =>
+              absolutePath === exclude ||
+              !relative(exclude, absolutePath).startsWith(".."),
+          )
+        ) {
+          continue;
+        }
+        // A subfolder with its own vfx-editor.prj is a separate project.
+        if (await isNestedProject(absolutePath)) continue;
         await walk(absolutePath);
         continue;
       }
@@ -361,6 +450,15 @@ async function readEffectSources(effectsRoot: string): Promise<EffectSource[]> {
       numeric: true,
     }),
   );
+}
+
+async function isNestedProject(directory: string): Promise<boolean> {
+  try {
+    await readFile(join(directory, EDITOR_PROJECT_FILE_NAME), "utf8");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function hasParticleEffectEnvelope(value: unknown): boolean {
