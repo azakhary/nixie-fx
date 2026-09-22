@@ -55,9 +55,12 @@ A bundle can be written one effect at a time. A single-effect export merges the
 recompiled effect into the bundle already on disk: other effects keep their
 compiled files and manifest entries, the manifest's `assets` becomes the union
 of what the surviving effects reference (orphans are deleted from the output
-root), and `generatedAt`, the aggregate `sourceHash` and `validation` are
-recomputed for the merged set. Every effect file is rewritten with the new
-`generatedAt` so the loader's manifest/effect consistency check holds. Each
+root), and the aggregate `sourceHash` and `validation` are recomputed for the
+merged set. Entries stay in source-file order, so the re-exported one keeps its
+place. `generatedAt` is the bundle's first export time and is reused on every
+later export (the loader requires effect files to match it), so untouched
+effect files stay byte-identical and only real changes show up in version
+control. Each
 manifest effect entry also carries its own `validation`; the manifest's
 top-level `validation` is the union of those.
 

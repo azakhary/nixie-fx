@@ -81,7 +81,6 @@ export async function writeVfxExportWithIo(
   options: WriteVfxExportFromProjectOptions,
   io: ExportIo,
 ): Promise<VfxExportWriteResult> {
-  const generatedAt = options.generatedAt ?? new Date().toISOString();
   const projectRoot = resolve(options.projectRoot);
   const effectsRoot = resolveProjectEffectDataDirectory(
     projectRoot,
@@ -101,6 +100,18 @@ export async function writeVfxExportWithIo(
     "Asset root path",
     io,
   );
+  // The bundle keeps its first export timestamp. The loader requires every
+  // effect file's `generatedAt` to equal the manifest's, so a fresh timestamp
+  // would rewrite every effect file on each export and bury the one real change
+  // in version-control noise. Content changes are tracked by `sourceHash`.
+  const previousStamp = (
+    await readExistingExportManifest(outputRoot.absolutePath, io)
+  )?.generatedAt;
+  const generatedAt =
+    options.generatedAt ??
+    (typeof previousStamp === "string" && previousStamp
+      ? previousStamp
+      : new Date().toISOString());
   assertOutputDoesNotContainSourceRoots(outputRoot.absolutePath, [
     effectsRoot.absolutePath,
     assetRoot.absolutePath,
@@ -202,7 +213,12 @@ export async function writeVfxExportWithIo(
     ? await readCarriedExportEffects(compiled.effects, outputRoot, io)
     : { effects: [], previousManifest: null };
   const manifest = incremental
-    ? mergeIncrementalManifest(compiled.manifest, carried.effects, generatedAt)
+    ? mergeIncrementalManifest(
+        compiled.manifest,
+        compiled.effects,
+        carried.effects,
+        generatedAt,
+      )
     : compiled.manifest;
 
   const writtenFiles: VfxExportWrittenFile[] = [];
@@ -250,6 +266,7 @@ export async function writeVfxExportWithIo(
   // requires to equal the manifest's. Their `sourceHash` is untouched, so the
   // bundle stays a faithful export of unchanged sources.
   for (const entry of carried.effects) {
+    if (entry.effect.generatedAt === generatedAt) continue;
     writtenFiles.push(
       await writeJsonFile(
         outputRoot.absolutePath,
@@ -369,17 +386,32 @@ async function readCarriedExportEffects(
  */
 function mergeIncrementalManifest(
   compiledManifest: VfxExportManifest,
+  compiledEffects: readonly VfxCompiledEffect[],
   carried: readonly CarriedExportEffect[],
   generatedAt: string,
 ): VfxExportManifest {
+  // Same order a full export writes (source files sorted numerically), so a
+  // per-effect export changes that effect's entry in place instead of moving it.
+  const assetsByPath = new Map<string, readonly VfxAssetRef[]>();
+  for (const entry of carried) {
+    assetsByPath.set(entry.manifestEntry.path, entry.effect.assets);
+  }
+  for (const effect of compiledEffects) {
+    assetsByPath.set(effect.path, effect.assets);
+  }
   const effects: VfxManifestEffectEntry[] = [
     ...carried.map((entry) => entry.manifestEntry),
     ...compiledManifest.effects,
-  ];
-  const assets = dedupeExportAssets([
-    ...carried.flatMap((entry) => entry.effect.assets),
-    ...compiledManifest.assets,
-  ]);
+  ].sort((a, b) =>
+    (a.sourceEffectFile ?? a.path).localeCompare(
+      b.sourceEffectFile ?? b.path,
+      undefined,
+      { numeric: true },
+    ),
+  );
+  const assets = dedupeExportAssets(
+    effects.flatMap((entry) => assetsByPath.get(entry.path) ?? []),
+  );
   return {
     ...compiledManifest,
     generatedAt,

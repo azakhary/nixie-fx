@@ -100,8 +100,11 @@ writer options) is incremental: it recompiles and re-validates only that
 effect and merges the result into the bundle already in the output folder
 instead of rewriting it. Other effects keep their compiled files, their
 manifest entries and their validation, assets that no effect references any
-more are pruned, and the manifest's `generatedAt` and aggregate `sourceHash`
-are refreshed so `loadVfxExportBundle` still accepts the bundle. Problems in
+more are pruned, and the aggregate `sourceHash` is recomputed so
+`loadVfxExportBundle` still accepts the bundle. Other effects' files are left
+byte-identical and the re-exported entry keeps its place in the manifest. A
+bundle keeps its first export's `generatedAt`, so re-exporting unchanged
+sources, whole or one effect at a time, rewrites nothing. Problems in
 another effect cannot block it, and a blocked single-effect export writes
 `export-diagnostics.json` while leaving the existing bundle untouched. A full
 export (no `effectFile`) still wipes and rewrites the whole output folder.

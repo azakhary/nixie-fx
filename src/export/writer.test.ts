@@ -836,6 +836,60 @@ describe("vfx export writer", () => {
       expect(fire.id).toBe("fire");
     });
 
+    it("changes only the re-exported effect: no timestamp churn, same order", async () => {
+      const projectRoot = createTwoEffectProject();
+      await writeVfxExportFromProject(exportOptions(projectRoot));
+      const out = (path: string) =>
+        readFileSync(resolve(projectRoot, "out/vfx", path), "utf8");
+      const smokeBefore = out("effects/smoke.json");
+      const manifestBefore = readJson(
+        resolve(projectRoot, "out/vfx/manifest.json"),
+      ) as { generatedAt: string; effects: { path: string }[] };
+
+      writeJson(resolve(projectRoot, "particle-data/effects/fire.json"), {
+        id: "fire",
+        name: "Fire",
+        emitters: [
+          {
+            id: "fire-emitter",
+            render: { texture: "fire.png" },
+            forces: { gravity: 2 },
+          },
+        ],
+      });
+      const result = await writeVfxExportFromProject({
+        ...exportOptions(projectRoot),
+        effectFile: "fire.json",
+      });
+
+      expect(result.ok).toBe(true);
+      // The untouched effect's compiled file is byte-identical and not rewritten.
+      expect(out("effects/smoke.json")).toBe(smokeBefore);
+      expect(
+        result.writtenFiles.some((file) => file.path.endsWith("smoke.json")),
+      ).toBe(false);
+      const manifest = readJson(
+        resolve(projectRoot, "out/vfx/manifest.json"),
+      ) as { generatedAt: string; effects: { path: string }[] };
+      expect(manifest.generatedAt).toBe(manifestBefore.generatedAt);
+      // The re-exported effect keeps its slot instead of moving to the end.
+      expect(manifest.effects.map((entry) => entry.path)).toEqual(
+        manifestBefore.effects.map((entry) => entry.path),
+      );
+    });
+
+    it("re-running a full export on unchanged sources rewrites nothing", async () => {
+      const projectRoot = createTwoEffectProject();
+      await writeVfxExportFromProject(exportOptions(projectRoot));
+      const snapshot = () =>
+        ["manifest.json", "effects/fire.json", "effects/smoke.json"].map(
+          (path) => readFileSync(resolve(projectRoot, "out/vfx", path), "utf8"),
+        );
+      const before = snapshot();
+      await writeVfxExportFromProject(exportOptions(projectRoot));
+      expect(snapshot()).toEqual(before);
+    });
+
     it("produces a merged manifest the official loader accepts", async () => {
       const projectRoot = createTwoEffectProject();
       await writeVfxExportFromProject({
