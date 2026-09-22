@@ -142,6 +142,42 @@ describe("Pixi material helpers", () => {
     expect(tagged.frame).toBe(frame);
   });
 
+  it("reuses one premultiplied source per original source (atlas upload)", () => {
+    // Two frames of the same atlas source must share ONE premultiplied source,
+    // or every emitter re-uploads the whole atlas.
+    const resource = {} as CanvasImageSource;
+    const destroy = vi.fn();
+    const once = vi.fn();
+    const shared = { resource, destroy, once };
+    const frameA = {
+      source: shared,
+      frame: { x: 0, y: 0, width: 8, height: 8 },
+    };
+    const frameB = {
+      source: shared,
+      frame: { x: 8, y: 0, width: 8, height: 8 },
+    };
+
+    const a = createPremultipliedSourceTexture(frameA as never);
+    const b = createPremultipliedSourceTexture(frameB as never);
+
+    expect(a).not.toBe(b);
+    expect((a as unknown as { source: unknown }).source).toBe(
+      (b as unknown as { source: unknown }).source,
+    );
+    expect((b as unknown as { frame: unknown }).frame).toBe(frameB.frame);
+    // The premultiplied source's lifetime is linked to the original's destroy.
+    expect(once).toHaveBeenCalledWith("destroy", expect.any(Function));
+  });
+
+  it("passes an already-premultiplied source through untouched", () => {
+    const source = {
+      source: { resource: {}, alphaMode: "premultiplied-alpha" },
+      frame: {},
+    };
+    expect(createPremultipliedSourceTexture(source as never)).toBe(source);
+  });
+
   it("returns the source unchanged when the resource is unreadable (I13-A)", () => {
     // No resource (headless / Texture.EMPTY): never constructs a new source.
     const noResource = { source: { resource: undefined }, frame: {} };

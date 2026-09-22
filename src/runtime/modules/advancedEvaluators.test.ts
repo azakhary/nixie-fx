@@ -20,6 +20,7 @@ import {
   particleSizeBySpeedMultiplier,
   sampleParticleModuleColor,
   sampleTextureSheetAnimationFrame,
+  sampleTextureSheetAnimationFrameIndex,
   type ParticleMotionSample,
 } from "./advancedEvaluators";
 
@@ -1344,3 +1345,45 @@ async function listSourceFiles(root: string): Promise<string[]> {
   }
   return files;
 }
+
+describe("sampleTextureSheetAnimationFrameIndex", () => {
+  it("returns the same frame the object-returning sampler reports", () => {
+    for (const tiles of [
+      [4, 2],
+      [4, 4],
+      [1, 1],
+      [3, 5],
+    ] as [number, number][]) {
+      for (const startFrame of [0, 1, 3]) {
+        for (const endFrame of [undefined, 2, 6, 99]) {
+          for (const randomStartFrame of [false, true]) {
+            for (const cycles of [0, 1, 2.5]) {
+              const settings = makeEmitter({
+                modules: { textureSheetAnimation: true },
+                advanced: {
+                  textureSheetAnimation: {
+                    tiles,
+                    startFrame,
+                    ...(endFrame === undefined ? {} : { endFrame }),
+                    frameOverTime: { mode: "constant", value: 3 },
+                    cycles,
+                    randomStartFrame,
+                  },
+                },
+              }).advanced.textureSheetAnimation;
+              for (const age of [0, 0.37, 1]) {
+                for (const seed of [0, 0.25, 0.9]) {
+                  expect(
+                    sampleTextureSheetAnimationFrameIndex(settings, age, seed),
+                  ).toBe(
+                    sampleTextureSheetAnimationFrame(settings, age, seed).frame,
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+});

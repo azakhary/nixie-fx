@@ -592,12 +592,16 @@ export function sampleTrailStretchApproximation(
   };
 }
 
-export function sampleTextureSheetAnimationFrame(
+/**
+ * The sheet frame index alone. Allocation-free variant for hosts that sample
+ * this per particle per frame and only need the index.
+ */
+export function sampleTextureSheetAnimationFrameIndex(
   settings: ParticleTextureSheetAnimationSettings,
   normalizedAge: number,
   seed: number,
   loopAge?: number,
-): ParticleTextureSheetFrameSample {
+): number {
   const tilesX = Math.max(1, Math.round(settings.tiles[0]));
   const tilesY = Math.max(1, Math.round(settings.tiles[1]));
   const totalFrames = Math.max(1, tilesX * tilesY);
@@ -635,8 +639,24 @@ export function sampleTextureSheetAnimationFrame(
       loopAge,
     ) *
       Math.max(0, settings.cycles);
-  const frame =
-    rangeStart + positiveModulo(Math.floor(offsetWithinRange), rangeLen);
+  return rangeStart + positiveModulo(Math.floor(offsetWithinRange), rangeLen);
+}
+
+export function sampleTextureSheetAnimationFrame(
+  settings: ParticleTextureSheetAnimationSettings,
+  normalizedAge: number,
+  seed: number,
+  loopAge?: number,
+): ParticleTextureSheetFrameSample {
+  const tilesX = Math.max(1, Math.round(settings.tiles[0]));
+  const tilesY = Math.max(1, Math.round(settings.tiles[1]));
+  const totalFrames = Math.max(1, tilesX * tilesY);
+  const frame = sampleTextureSheetAnimationFrameIndex(
+    settings,
+    normalizedAge,
+    seed,
+    loopAge,
+  );
   return {
     frame,
     column: frame % tilesX,

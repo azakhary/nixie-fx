@@ -1,3 +1,10 @@
+export {
+  createDerivedAlphaTexture,
+  createMaterialBakeTexture,
+  createPremultipliedSourceTexture,
+} from "./material";
+export * from "./NumericTintParticle";
+export * from "./particlePrewarm";
 export * from "./projection";
 export * from "./proceduralTextures";
 export * from "./renderer";

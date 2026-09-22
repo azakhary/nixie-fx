@@ -7,6 +7,16 @@ import type { MaterialInstance, ShaderGraph } from "../schema/materials";
 type CanvasFactory = Pick<Document, "createElement">;
 
 /**
+ * One premultiplied `TextureSource` per original source, shared by every frame
+ * and effect instance that binds it. Without this, each emitter uploaded the
+ * whole atlas again for its own premultiplied source.
+ */
+const premultipliedSources = new WeakMap<
+  Texture["source"],
+  Texture["source"]
+>();
+
+/**
  * Build a new texture whose alpha channel is derived from the requested source
  * channel/luminance of `source`. Returns `null` when derivation is not possible
  * (no DOM canvas available, or the source texture has no readable pixels — e.g.
@@ -83,26 +93,36 @@ export function createDerivedAlphaTexture(
  * source is constructed (never mutating the incoming source's `alphaMode`)
  * because the derived texture is cached by (uid, opacitySource, invert) with no
  * blend axis, so it can be shared by a premultiplied and a non-premultiplied
- * emitter; only this premultiplied wrapper carries the tag.
+ * emitter; only this premultiplied wrapper carries the tag. The premultiplied
+ * source itself is cached per original source (and destroyed with it), so atlas
+ * frames and effect instances share one tagged source instead of re-uploading
+ * the atlas for every emitter.
  */
 export function createPremultipliedSourceTexture(source: Texture): Texture {
-  const resource = source.source?.resource;
+  const original = source.source;
+  const resource = original?.resource;
   if (!resource) return source;
-  if (ImageSource.test(resource)) {
-    const premultipliedSource = new ImageSource({
-      resource,
-      alphaMode: "premultiplied-alpha",
-    });
-    return new Texture({ source: premultipliedSource, frame: source.frame });
+  if (original.alphaMode === "premultiplied-alpha") return source;
+  let shared = premultipliedSources.get(original);
+  if (!shared) {
+    const options = { resource, alphaMode: "premultiplied-alpha" as const };
+    if (ImageSource.test(resource)) shared = new ImageSource(options);
+    else if (CanvasSource.test(resource)) shared = new CanvasSource(options);
+    else return source;
+    premultipliedSources.set(original, shared);
+    // The original source owns the lifetime: callers destroy only the returned
+    // frame, never the shared source.
+    const ownedSource = shared;
+    // Test doubles / minimal sources may not be event emitters; the cache then
+    // simply lives as long as the original source object does.
+    if (typeof original.once === "function") {
+      original.once("destroy", () => {
+        ownedSource.destroy();
+        premultipliedSources.delete(original);
+      });
+    }
   }
-  if (CanvasSource.test(resource)) {
-    const premultipliedSource = new CanvasSource({
-      resource,
-      alphaMode: "premultiplied-alpha",
-    });
-    return new Texture({ source: premultipliedSource, frame: source.frame });
-  }
-  return source;
+  return new Texture({ source: shared, frame: source.frame });
 }
 
 /**
