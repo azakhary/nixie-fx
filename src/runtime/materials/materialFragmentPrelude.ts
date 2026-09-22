@@ -20,13 +20,16 @@ uniform vec4 uDynamicParams;
 
 // Graph values and particle inputs are straight RGBA. Decode sampled textures
 // at the input boundary and premultiply only the completed fragment output.
-vec4 materialTextureSample(sampler2D source, vec2 uv) {
-  vec4 color = texture2D(source, uv);
+vec4 materialDecodeTexture(vec4 color) {
 #ifdef MATERIAL_TEXTURE_PREMULTIPLIED
   color.rgb = color.a > 0.0 ? color.rgb / color.a : vec3(0.0);
 #endif
   return color;
 }
+
+// Keep sampler selection at the call site. Passing samplers through a shared
+// function misrenders nested texture reads on ANGLE's D3D11 backend.
+#define materialTextureSample(source, uv) materialDecodeTexture(texture2D(source, uv))
 
 vec4 materialEncodeOutput(vec4 color) {
 #ifdef MATERIAL_WORLD_COLOR
