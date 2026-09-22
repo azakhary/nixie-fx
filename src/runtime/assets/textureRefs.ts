@@ -23,6 +23,9 @@ export function collectParticleTextureRefs(
   };
 
   for (const emitter of effect.emitters) {
+    // Disabled emitters never draw, so their assets are not part of the
+    // effect's runtime texture set.
+    if (!emitter.enabled) continue;
     addPath(emitter.render.texture);
     // A material's MainTex feeds the shared container texture (techspec §8), so
     // it must be collected for export exactly like `render.texture`.

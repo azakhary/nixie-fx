@@ -20,7 +20,7 @@ import {
   ParticleEffectRunner,
   type ParticleEffectEvent,
   normalizeParticleEffect,
-  sampleInitialParticleColor,
+  sampleInitialParticleColorInto,
   sampleParticleSimulationMotion,
   particleSimulationToWorld,
   particleSimulationDirectionToWorld,
@@ -31,6 +31,7 @@ import {
   type ParticleEffectDefinition,
   type ParticleEmitterDefinition,
   type ParticleEmitterRuntimeState,
+  type ParticleMotionResult,
   type ParticleSubEmitterSpawnRequest,
 } from "../../engine/particles";
 import {
@@ -94,6 +95,8 @@ import {
   type PixiVfxMaterialRenderBlock,
 } from "./materialRenderDiagnostics";
 import { projectParticleDirectionAngle } from "./particleProjection";
+import { NumericTintParticle } from "./NumericTintParticle";
+import { particlePrewarmCapacity } from "./particlePrewarm";
 import type {
   PixiVfxCreateEffectOptions,
   PixiVfxEffectInstanceOptions,
@@ -105,6 +108,7 @@ import type {
   PixiVfxMaterialGraphProvider,
   PixiVfxProceduralTextureKey,
   PixiVfxProjection,
+  PixiVfxProjectionPoint,
   PixiVfxParticleDebugQuad,
   PixiVfxRendererOptions,
   PixiVfxRendererStats,
@@ -125,6 +129,18 @@ import {
 interface EmitterView extends PixiVfxEmitterRenderView {
   pool: Particle[];
   depthSort: DepthSortEntry[];
+  /** Retained depth-sort entries, indexed by visible slot (no per-frame objects). */
+  depthSortPool: DepthSortEntry[];
+  /** Reused draw result; drawEmitterView never allocates one per frame. */
+  drawResult: EmitterDrawResult;
+  /** Per-view scratch for the draw loop (see createParticleDrawScratch). */
+  particleScratch: ParticleDrawScratch;
+  /** Tier-1 fold, resolved at view build / provider change instead of per frame. */
+  materialFixed: MaterialFixedDescriptor | null;
+  /** Particle-color usage, resolved at view build / provider change. */
+  particleColorUsage: ParticleColorUsage;
+  /** Reused representative custom-data params for Tier-2 shader uniforms. */
+  dynamicParams: Vec4;
   trailContainer: ParticleContainer;
   trailTexture: Texture;
   trailPool: Particle[];
@@ -324,6 +340,8 @@ export class PixiVfxEffectInstance {
   private ownVisibleParticles = 0;
   private ownRenderGroupsLastFrame = 0;
   private readonly ownDebugQuads: PixiVfxParticleDebugQuad[] = [];
+  /** Retained debug-quad objects, reused frame to frame by slot. */
+  private readonly debugQuadPool: PixiVfxParticleDebugQuad[] = [];
   private ownMissingTextureRefs: VfxTextureAssetRef[] = [];
   private ownMissingSubEmitterRefs: string[] = [];
   private ownMissingMaterialRefs: string[] = [];
@@ -632,7 +650,9 @@ export class PixiVfxEffectInstance {
   getParticleDebugQuads(
     out: PixiVfxParticleDebugQuad[] = [],
   ): PixiVfxParticleDebugQuad[] {
-    out.push(...this.ownDebugQuads);
+    // Copy on read: the per-frame quads are pooled and reused, so callers that
+    // retain one (diagnostics, tests) must not observe later frames.
+    for (const quad of this.ownDebugQuads) out.push({ ...quad });
     for (const child of this.childInstances) {
       child.getParticleDebugQuads(out);
     }
@@ -736,7 +756,9 @@ export class PixiVfxEffectInstance {
       this.stats.bloomSourceParticles = 0;
       return 0;
     }
-    this.ensureEmitterViews();
+    // Imported atlas/material bindings are immutable; editor providers (and
+    // hosts that do not opt in) keep the per-frame live refresh.
+    if (!this.textureProvider?.staticAssets) this.ensureEmitterViews();
     this.ownDebugQuads.length = 0;
     let visibleParticles = 0;
     let renderGroups = 0;
@@ -760,8 +782,9 @@ export class PixiVfxEffectInstance {
         bloom,
         this.ownDebugQuads,
         i,
-        this.resolveEmitterMaterialFixed(emitter),
-        this.resolveEmitterParticleColorUsage(emitter),
+        view.materialFixed,
+        view.particleColorUsage,
+        this.debugQuadPool,
       );
       visibleParticles += drawResult.visibleParticles;
       renderGroups += drawResult.renderGroups;
@@ -813,7 +836,14 @@ export class PixiVfxEffectInstance {
         });
       }
       const existing = this.emitterViews[i];
-      if (existing?.key === render.key) continue;
+      if (existing?.key === render.key) {
+        // The render key does not cover the Tier-1 fold, so refresh it here:
+        // a material-graph provider change keeps the view but changes the fold.
+        existing.materialFixed = this.resolveEmitterMaterialFixed(emitter);
+        existing.particleColorUsage =
+          this.resolveEmitterParticleColorUsage(emitter);
+        continue;
+      }
       if (existing) {
         destroyEmitterView(this.root, this.bloomRoot, existing);
       }
@@ -869,12 +899,36 @@ export class PixiVfxEffectInstance {
       this.root.addChild(trailContainer);
       this.root.addChild(container);
       this.bloomRoot.addChild(bloomContainer);
+      // Static-asset hosts pre-allocate the authored steady-state pool once, so
+      // the first seconds of playback never allocate a Particle per frame.
+      const pool: Particle[] = [];
+      const depthSortPool: DepthSortEntry[] = [];
+      if (this.textureProvider?.staticAssets) {
+        const capacity = particlePrewarmCapacity(emitter);
+        for (let index = 0; index < capacity; index++) {
+          const particle = createParticle(
+            render.frameTextures[0] ?? render.texture,
+          );
+          pool.push(particle);
+          depthSortPool.push({ particle, depth: 0, start: 0, seed: 0 });
+        }
+      }
       this.emitterViews[i] = {
         key: render.key,
         texture: render.texture,
         container,
-        pool: [],
+        pool,
         depthSort: [],
+        depthSortPool,
+        drawResult: {
+          visibleParticles: 0,
+          renderGroups: 0,
+          bloomSourceParticles: 0,
+        },
+        particleScratch: createParticleDrawScratch(render.texture),
+        materialFixed: this.resolveEmitterMaterialFixed(emitter),
+        particleColorUsage: this.resolveEmitterParticleColorUsage(emitter),
+        dynamicParams: [0, 0, 0, 0],
         trailContainer,
         trailTexture: render.trailTexture,
         trailPool: [],
@@ -1028,7 +1082,7 @@ export class PixiVfxEffectInstance {
         ? texture
         : artifact?.tier === "tier0-bake"
           ? texture
-          : this.resolveDerivedTexture(texture, emitter);
+          : this.resolveDerivedTexture(texture, emitter, path);
     // I13-A: a texture-only premultiplied emitter binds an already-premultiplied
     // source (no upload multiply, no normal→normal-npm swap). Layered AFTER the
     // opacity derivation so both compose.
@@ -1230,10 +1284,25 @@ export class PixiVfxEffectInstance {
   private resolveDerivedTexture(
     source: Texture,
     emitter: ParticleEmitterDefinition,
+    path: string | null = null,
   ): Texture {
     const opacitySource = emitter.render.opacitySource;
     if (!opacitySourceNeedsDerivation(opacitySource)) return source;
     const invert = emitter.render.opacityInvert;
+    // Host-owned baked alpha variants (build-time), when the provider ships
+    // them. Falls through to the runtime canvas derivation when absent.
+    if (
+      path &&
+      !emitter.render.material &&
+      this.textureProvider?.getAlphaTexture
+    ) {
+      const provided = this.textureProvider.getAlphaTexture(
+        createPixiVfxTextureRef(path),
+        opacitySource,
+        invert,
+      );
+      if (provided) return provided;
+    }
     const key = derivedTextureCacheKey(source.uid, opacitySource, invert);
     const cached = this.derivedTextures.get(key);
     if (cached) return cached;
@@ -1276,14 +1345,20 @@ export class PixiVfxEffectInstance {
     let childSpawnedSubEmittersLastFrame = 0;
     let childRenderGroupsLastFrame = 0;
     let childBloomSourceParticles = 0;
-    const missingTextureRefs = [...this.ownMissingTextureRefs];
-    const missingSubEmitterRefs = [...this.ownMissingSubEmitterRefs];
-    const missingMaterialRefs = [...this.ownMissingMaterialRefs];
-    const unsupportedModules = [...this.ownUnsupportedModules];
-    const unsupportedFeatures = [
-      ...this.ownUnsupportedFeatures,
-      ...this.ownMaterialUnsupportedFeatures,
-    ];
+    // Reuse the stats arrays in place: this runs every frame per instance.
+    const missingTextureRefs = this.stats.missingTextureRefs;
+    const missingSubEmitterRefs = this.stats.missingSubEmitterRefs;
+    const missingMaterialRefs = this.stats.missingMaterialRefs;
+    const unsupportedModules = this.stats.unsupportedModules;
+    const unsupportedFeatures = this.stats.unsupportedFeatures;
+    copyArray(this.ownMissingTextureRefs, missingTextureRefs);
+    copyArray(this.ownMissingSubEmitterRefs, missingSubEmitterRefs);
+    copyArray(this.ownMissingMaterialRefs, missingMaterialRefs);
+    copyArray(this.ownUnsupportedModules, unsupportedModules);
+    copyArray(this.ownUnsupportedFeatures, unsupportedFeatures);
+    for (const feature of this.ownMaterialUnsupportedFeatures) {
+      unsupportedFeatures.push(feature);
+    }
     for (const child of this.childInstances) {
       childActiveParticles += child.stats.activeParticles;
       childVisibleParticles += child.stats.visibleParticles;
@@ -1313,9 +1388,9 @@ export class PixiVfxEffectInstance {
     this.stats.renderGroupsLastFrame =
       this.ownRenderGroupsLastFrame + childRenderGroupsLastFrame;
     this.stats.bloomSourceParticles += childBloomSourceParticles;
-    this.stats.missingTextureRefs = dedupeTextureRefs(missingTextureRefs);
-    this.stats.missingSubEmitterRefs = dedupeStrings(missingSubEmitterRefs);
-    this.stats.missingMaterialRefs = dedupeStrings(missingMaterialRefs);
+    dedupeTextureRefsInPlace(missingTextureRefs);
+    dedupeInPlace(missingSubEmitterRefs);
+    dedupeInPlace(missingMaterialRefs);
     this.stats.unsupportedModules = unsupportedModules;
     this.stats.unsupportedFeatures = unsupportedFeatures;
   }
@@ -1330,6 +1405,9 @@ export class PixiVfxRenderer {
   };
 
   private readonly instances = new Set<PixiVfxEffectInstance>();
+  /** Reused per-frame aggregation buffer for refreshStats. */
+  private readonly statsAggregate: PixiVfxEffectStats =
+    createEmptyEffectStats();
   private readonly bloomComposer?: BloomComposer;
   private bloomConfig: ResolvedBloomConfig;
   private textureProvider?: PixiVfxTextureProvider;
@@ -1399,6 +1477,21 @@ export class PixiVfxRenderer {
     }
     this.refreshStats();
     return instance;
+  }
+
+  /**
+   * Adopt an externally created instance (bloom + stage wiring, stats) without
+   * rebuilding it. `addToStage: false` keeps the caller's own parenting.
+   */
+  addEffect(instance: PixiVfxEffectInstance, addToStage = true): void {
+    if (this.instances.has(instance)) return;
+    this.instances.add(instance);
+    this.bloomSourceRoot.addChild(instance.bloomRoot);
+    if (addToStage) {
+      this.root.addChild(instance.root);
+      this.keepBloomOverlayBehindScene();
+    }
+    this.refreshStats();
   }
 
   removeEffect(instance: PixiVfxEffectInstance, destroy = true): void {
@@ -1524,11 +1617,21 @@ export class PixiVfxRenderer {
   }
 
   private refreshStats(): void {
-    const aggregate = createEmptyEffectStats();
-    aggregate.unsupportedModules = [];
-    aggregate.unsupportedFeatures = [];
-    aggregate.missingTextureRefs = [];
-    aggregate.missingMaterialRefs = [];
+    // Runs every frame: aggregate into the retained stats arrays in place.
+    const aggregate = this.statsAggregate;
+    aggregate.activeParticles = 0;
+    aggregate.visibleParticles = 0;
+    aggregate.capacity = 0;
+    aggregate.emittedLastFrame = 0;
+    aggregate.uploadBytesLastFrame = 0;
+    aggregate.spawnedSubEmittersLastFrame = 0;
+    aggregate.renderGroupsLastFrame = 0;
+    aggregate.bloomSourceParticles = 0;
+    aggregate.unsupportedModules.length = 0;
+    aggregate.unsupportedFeatures.length = 0;
+    aggregate.missingTextureRefs.length = 0;
+    aggregate.missingMaterialRefs.length = 0;
+    aggregate.missingSubEmitterRefs.length = 0;
     for (const instance of this.instances) {
       aggregate.activeParticles += instance.stats.activeParticles;
       aggregate.visibleParticles += instance.stats.visibleParticles;
@@ -1650,6 +1753,7 @@ function drawEmitterView(
   emitterIndex = 0,
   materialFixed: MaterialFixedDescriptor | null = null,
   particleColorUsage: ParticleColorUsage = APPLY_EMITTER_PARTICLE_COLOR,
+  debugQuadPool?: PixiVfxParticleDebugQuad[],
 ): EmitterDrawResult {
   // Effective blend is resolved at view-build time (it forks the render key,
   // so any blend change rebuilds the view before this runs). Opaque means "no
@@ -1667,17 +1771,16 @@ function drawEmitterView(
   if (view.materialBlock) {
     clearEmitterView(view);
     state.uploadBytesLastFrame = 0;
-    return {
-      visibleParticles: 0,
-      renderGroups: 0,
-      bloomSourceParticles: 0,
-    };
+    view.drawResult.visibleParticles = 0;
+    view.drawResult.renderGroups = 0;
+    view.drawResult.bloomSourceParticles = 0;
+    return view.drawResult;
   }
   for (const shader of view.materialShaders) {
     updateTier2ParticleMaterialShaderTime(shader, timeSeconds);
     updateTier2ParticleMaterialShaderDynamicParams(
       shader,
-      sampleEmitterDynamicParamsRepresentative(emitter),
+      sampleEmitterDynamicParamsRepresentative(emitter, view.dynamicParams),
     );
   }
   updateAnimatedUvFrameTextures(view, timeSeconds);
@@ -1689,6 +1792,9 @@ function drawEmitterView(
     const particle =
       view.pool[visibleCount] ??
       createParticle(view.frameTextures[0] ?? view.texture);
+    // Retain the slot even for a culled candidate, so invisible particles
+    // cannot allocate a fresh Particle on every frame.
+    view.pool[visibleCount] = particle;
     const sample = updateParticle(
       particle,
       emitter,
@@ -1702,11 +1808,18 @@ function drawEmitterView(
       materialFixed,
       particleColorUsage,
       view.effectiveBlend,
+      view.particleScratch,
     );
     if (!sample) continue;
-    appendParticleDebugQuad(debugQuads, emitter, emitterIndex, i, sample);
+    appendParticleDebugQuad(
+      debugQuads,
+      emitter,
+      emitterIndex,
+      i,
+      sample,
+      debugQuadPool,
+    );
     if (!sample.visible) continue;
-    view.pool[visibleCount] = particle;
     updateTrailHistory(view, emitter, sample, timeSeconds);
     if (bloom.enabled && sample.emissiveStrength > bloom.threshold) {
       const bloomParticle =
@@ -1716,12 +1829,16 @@ function drawEmitterView(
       view.bloomContainer.particleChildren[bloomSourceCount] = bloomParticle;
       bloomSourceCount++;
     }
-    view.depthSort.push({
-      particle,
-      depth: sample.depth,
-      start: sample.start,
-      seed: sample.seed,
-    });
+    let entry = view.depthSortPool[visibleCount];
+    if (!entry) {
+      entry = { particle, depth: 0, start: 0, seed: 0 };
+      view.depthSortPool[visibleCount] = entry;
+    }
+    entry.particle = particle;
+    entry.depth = sample.depth;
+    entry.start = sample.start;
+    entry.seed = sample.seed;
+    view.depthSort.push(entry);
     visibleCount++;
   }
   // Draw in a stable per-particle order. ParticleContainer paints in array
@@ -1736,20 +1853,20 @@ function drawEmitterView(
   view.bloomContainer.particleChildren.length = bloomSourceCount;
   view.bloomContainer.update();
   const trailCount = drawTrailView(view, emitter, timeSeconds);
-  state.uploadBytesLastFrame = estimateParticleUploadBytes({
-    liveParticles: visibleCount,
-    trailParticles: trailCount,
-    bloomParticles: bloomSourceCount,
-    dynamicUvs: view.dynamicUvs,
-  });
-  return {
-    visibleParticles: visibleCount + trailCount,
-    renderGroups:
-      (visibleCount > 0 ? 1 : 0) +
-      (trailCount > 0 ? 1 : 0) +
-      (bloomSourceCount > 0 ? 1 : 0),
-    bloomSourceParticles: bloomSourceCount,
-  };
+  state.uploadBytesLastFrame = estimateParticleUploadBytes(
+    visibleCount,
+    trailCount,
+    bloomSourceCount,
+    view.dynamicUvs,
+  );
+  const result = view.drawResult;
+  result.visibleParticles = visibleCount + trailCount;
+  result.renderGroups =
+    (visibleCount > 0 ? 1 : 0) +
+    (trailCount > 0 ? 1 : 0) +
+    (bloomSourceCount > 0 ? 1 : 0);
+  result.bloomSourceParticles = bloomSourceCount;
+  return result;
 }
 
 function sortPixiDepthEntries(
@@ -1758,22 +1875,18 @@ function sortPixiDepthEntries(
 ): void {
   switch (sortMode) {
     case "distanceNearFirst":
-      entries.sort(
-        (a, b) => a.depth - b.depth || a.start - b.start || a.seed - b.seed,
-      );
+      entries.sort(compareDepthNearFirst);
       return;
     case "oldestFirst":
-      entries.sort((a, b) => b.start - a.start || b.seed - a.seed);
+      entries.sort(compareOldestFirst);
       return;
     case "none":
     case "youngestFirst":
-      entries.sort((a, b) => a.start - b.start || a.seed - b.seed);
+      entries.sort(compareYoungestFirst);
       return;
     case "distanceFarFirst":
     default:
-      entries.sort(
-        (a, b) => b.depth - a.depth || a.start - b.start || a.seed - b.seed,
-      );
+      entries.sort(compareDepthFarFirst);
       return;
   }
 }
@@ -1784,29 +1897,52 @@ function appendParticleDebugQuad(
   emitterIndex: number,
   particleIndex: number,
   sample: ParticleRenderSample,
+  pool?: PixiVfxParticleDebugQuad[],
 ): void {
   if (!debugQuads || debugQuads.length >= PARTICLE_DEBUG_QUAD_LIMIT) return;
-  debugQuads.push({
-    emitterId: emitter.id,
-    emitterIndex,
-    particleIndex,
-    mode: emitter.mode,
-    x: sample.x,
-    y: sample.y,
-    width: Math.max(
-      2,
-      Math.abs(sample.scaleX) * Math.max(1, sample.texture.width),
-    ),
-    height: Math.max(
-      2,
-      Math.abs(sample.scaleY) * Math.max(1, sample.texture.height),
-    ),
-    anchorX: sample.anchorX,
-    anchorY: sample.anchorY,
-    rotation: sample.rotation,
-    depth: sample.depth,
-    alpha: sample.alpha,
-  });
+  const width = Math.max(
+    2,
+    Math.abs(sample.scaleX) * Math.max(1, sample.texture.width),
+  );
+  const height = Math.max(
+    2,
+    Math.abs(sample.scaleY) * Math.max(1, sample.texture.height),
+  );
+  const slot = debugQuads.length;
+  let quad = pool?.[slot];
+  if (!quad) {
+    quad = {
+      emitterId: emitter.id,
+      emitterIndex,
+      particleIndex,
+      mode: emitter.mode,
+      x: sample.x,
+      y: sample.y,
+      width,
+      height,
+      anchorX: sample.anchorX,
+      anchorY: sample.anchorY,
+      rotation: sample.rotation,
+      depth: sample.depth,
+      alpha: sample.alpha,
+    };
+    if (pool) pool[slot] = quad;
+  } else {
+    quad.emitterId = emitter.id;
+    quad.emitterIndex = emitterIndex;
+    quad.particleIndex = particleIndex;
+    quad.mode = emitter.mode;
+    quad.x = sample.x;
+    quad.y = sample.y;
+    quad.width = width;
+    quad.height = height;
+    quad.anchorX = sample.anchorX;
+    quad.anchorY = sample.anchorY;
+    quad.rotation = sample.rotation;
+    quad.depth = sample.depth;
+    quad.alpha = sample.alpha;
+  }
+  debugQuads.push(quad);
 }
 
 function updateParticle(
@@ -1822,6 +1958,7 @@ function updateParticle(
   materialFixed: MaterialFixedDescriptor | null = null,
   particleColorUsage: ParticleColorUsage = APPLY_EMITTER_PARTICLE_COLOR,
   effectiveBlend: EffectiveParticleBlend = emitter.render.blend,
+  scratch: ParticleDrawScratch = createParticleDrawScratch(particle.texture),
 ): ParticleRenderSample | undefined {
   const data = state.instanceData;
   const offset = index * PARTICLE_INSTANCE_STRIDE;
@@ -1844,6 +1981,7 @@ function updateParticle(
     ageSeconds,
     normalizedAge,
     emitterPosition,
+    scratch.motion,
   );
   const velocity = motion.velocity;
   const speed = Math.hypot(velocity[0], velocity[1], velocity[2]);
@@ -1853,23 +1991,21 @@ function updateParticle(
     pixiAnalyticVelocityScratch[1] = velocity[1];
     pixiAnalyticVelocityScratch[2] = velocity[2];
   }
-  const world: Vec3 = [
-    motion.position[0],
-    motion.position[1],
-    motion.position[2],
-  ];
+  const world = scratch.world;
+  world[0] = motion.position[0];
+  world[1] = motion.position[1];
+  world[2] = motion.position[2];
   // Split module pass (was applyParticleMotionModules): the PRE-collision
   // displaced position feeds the effective-alignment forward difference
   // below, saving its second motion evaluation (I13-F: collision excluded).
-  const motionModuleSample: ParticleMotionSample = {
-    seed,
-    normalizedAge,
-    loopAge,
-    ageSeconds,
-    timeSeconds,
-    world,
-    velocity,
-  };
+  const motionModuleSample = scratch.motionSample;
+  motionModuleSample.seed = seed;
+  motionModuleSample.normalizedAge = normalizedAge;
+  motionModuleSample.loopAge = loopAge;
+  motionModuleSample.ageSeconds = ageSeconds;
+  motionModuleSample.timeSeconds = timeSeconds;
+  motionModuleSample.world = world;
+  motionModuleSample.velocity = velocity;
   applyPositionalMotionModules(emitter, motionModuleSample);
   particleSimulationToWorld(
     emitter,
@@ -1896,16 +2032,15 @@ function updateParticle(
   ) {
     return undefined;
   }
-  const projected = projection.project(world);
+  const projected = projection.project(world, scratch.projected);
   if (!projected || projected.visible === false) return undefined;
 
   const runtimeVectorOffset = index * PARTICLE_RUNTIME_VECTOR_STRIDE;
   const flags = state.runtimeFlagsData[index] ?? 0;
-  const spawnDirection: Vec3 = [
-    state.spawnDirectionData[runtimeVectorOffset + 0] ?? 0,
-    state.spawnDirectionData[runtimeVectorOffset + 1] ?? 1,
-    state.spawnDirectionData[runtimeVectorOffset + 2] ?? 0,
-  ];
+  const spawnDirection = scratch.spawnDirection;
+  spawnDirection[0] = state.spawnDirectionData[runtimeVectorOffset + 0] ?? 0;
+  spawnDirection[1] = state.spawnDirectionData[runtimeVectorOffset + 1] ?? 1;
+  spawnDirection[2] = state.spawnDirectionData[runtimeVectorOffset + 2] ?? 0;
   particleSimulationDirectionToWorld(emitter, state, index, spawnDirection);
   const sizeSettingsX =
     emitter.mode === "billboard"
@@ -2004,14 +2139,13 @@ function updateParticle(
     alignmentSourceVelocity = eff;
     alignmentSpeed = Math.hypot(eff[0], eff[1], eff[2]);
   }
-  const motionDirection: Vec3 =
-    alignmentSpeed > 0.000001
-      ? [
-          alignmentSourceVelocity[0],
-          alignmentSourceVelocity[1],
-          alignmentSourceVelocity[2],
-        ]
-      : spawnDirection;
+  let motionDirection = spawnDirection;
+  if (alignmentSpeed > 0.000001) {
+    motionDirection = scratch.motionDirection;
+    motionDirection[0] = alignmentSourceVelocity[0];
+    motionDirection[1] = alignmentSourceVelocity[1];
+    motionDirection[2] = alignmentSourceVelocity[2];
+  }
   const alignDirection = !trail.stretchesAlongMotion
     ? particleAlignmentDirection(
         emitter,
@@ -2051,7 +2185,10 @@ function updateParticle(
   particle.scaleY = (pixelSizeY * renderScaleY) / Math.max(1, texture.height);
   let localRotation = 0;
   if (localSpace && !alignDirection && !trail.stretchesAlongMotion) {
-    const localAxis: Vec3 = [1, 0, 0];
+    const localAxis = scratch.localAxis;
+    localAxis[0] = 1;
+    localAxis[1] = 0;
+    localAxis[2] = 0;
     particleSimulationDirectionToWorld(emitter, state, index, localAxis);
     localRotation = projectParticleDirectionAngle(world, localAxis, projection);
   }
@@ -2094,11 +2231,13 @@ function updateParticle(
 
   const depth = projection.depth?.(world) ?? world[2];
   // Initialize Particle color * intensity, then Color over Lifetime multiplies.
-  const initColor = sampleInitialParticleColor(
+  const initColor = sampleInitialParticleColorInto(
     emitter.initializeParticle.color,
     seed,
     normalizedAge,
     loopAge,
+    scratch.initialColor,
+    scratch.initialColorScratch,
   );
   const intensity = Math.max(
     0,
@@ -2148,14 +2287,21 @@ function updateParticle(
   const litR = Math.max(0, emitterR * mTintR * mEmissive);
   const litG = Math.max(0, emitterG * mTintG * mEmissive);
   const litB = Math.max(0, emitterB * mTintB * mEmissive);
-  const hdrColor: Vec3 = [litR, litG, litB];
+  const hdrColor = scratch.hdrColor;
+  hdrColor[0] = litR;
+  hdrColor[1] = litG;
+  hdrColor[2] = litB;
   const peak = Math.max(litR, litG, litB);
   const overbright = peak > 1 ? peak : 1;
   const baseAlpha = clamp(emitterA * mTintA * mOpacity, 0, 1);
   const sdrRgb = bloom.enabled
-    ? toneMapPreviewHdrColor(hdrColor, bloom.exposure)
-    : huePreservingHdrToSdrColor(hdrColor);
-  const composed: Vec4 = [sdrRgb[0], sdrRgb[1], sdrRgb[2], baseAlpha];
+    ? toneMapPreviewHdrColor(hdrColor, bloom.exposure, scratch.sdrColor)
+    : huePreservingHdrToSdrColor(hdrColor, scratch.sdrColor);
+  const composed = scratch.composedColor;
+  composed[0] = sdrRgb[0];
+  composed[1] = sdrRgb[1];
+  composed[2] = sdrRgb[2];
+  composed[3] = baseAlpha;
   const color = applyDepthInk(composed, depth, emitter.render.depthInk);
   // B5 cause 1: grain is an intentional per-particle brightness variation. Key
   // it on the stable per-particle seed only (NOT normalizedAge, which changes
@@ -2171,45 +2317,55 @@ function updateParticle(
   const overbrightAlpha =
     effectiveBlend === "additive" ? sdrAdditiveAlphaBoost(overbright) : 1;
   particle.alpha = clamp(color[3] * overbrightAlpha, 0, 1);
-  const visible = particle.alpha > 0.01 && pixelSize > 0.01;
-  return {
-    visible,
-    x: projected.x,
-    y: projected.y,
-    depth,
-    pixelSize,
-    pixelsPerWorldUnit,
-    rotation: particle.rotation,
-    scaleX: particle.scaleX,
-    scaleY: particle.scaleY,
-    anchorX: particle.anchorX,
-    anchorY: particle.anchorY,
-    tint,
-    alpha: particle.alpha,
-    baseAlpha,
-    hdrColor,
-    emissiveStrength: peak,
-    texture,
-    key: `${start.toFixed(6)}:${seed.toFixed(6)}`,
-    start,
-    normalizedAge,
-    loopAge,
-    speed,
-    seed,
-  };
+  const sample = scratch.sample;
+  sample.visible = particle.alpha > 0.01 && pixelSize > 0.01;
+  sample.x = projected.x;
+  sample.y = projected.y;
+  sample.depth = depth;
+  sample.pixelSize = pixelSize;
+  sample.pixelsPerWorldUnit = pixelsPerWorldUnit;
+  sample.rotation = particle.rotation;
+  sample.scaleX = particle.scaleX;
+  sample.scaleY = particle.scaleY;
+  sample.anchorX = particle.anchorX;
+  sample.anchorY = particle.anchorY;
+  sample.tint = tint;
+  sample.alpha = particle.alpha;
+  sample.baseAlpha = baseAlpha;
+  sample.hdrColor = hdrColor;
+  sample.emissiveStrength = peak;
+  sample.texture = texture;
+  // The trail-history map is keyed per particle; only trail emitters read it,
+  // so the string is built only when trails are enabled (it is the one
+  // remaining per-particle allocation of the draw loop).
+  sample.key = emitter.modules.trails
+    ? `${start.toFixed(6)}:${seed.toFixed(6)}`
+    : "";
+  sample.start = start;
+  sample.normalizedAge = normalizedAge;
+  sample.loopAge = loopAge;
+  sample.speed = speed;
+  sample.seed = seed;
+  return sample;
 }
 
 function sampleEmitterDynamicParamsRepresentative(
   emitter: ParticleEmitterDefinition,
+  out: Vec4 = [0, 0, 0, 0],
 ): Vec4 {
-  if (!emitter.modules.customData) return [0, 0, 0, 0];
+  if (!emitter.modules.customData) {
+    out[0] = 0;
+    out[1] = 0;
+    out[2] = 0;
+    out[3] = 0;
+    return out;
+  }
   const channels = emitter.advanced.customData.channels;
-  return [
-    sampleParticleScalarValue(channels[0], 0, 0.5, 0),
-    sampleParticleScalarValue(channels[1], 0, 0.5, 0),
-    sampleParticleScalarValue(channels[2], 0, 0.5, 0),
-    sampleParticleScalarValue(channels[3], 0, 0.5, 0),
-  ];
+  out[0] = sampleParticleScalarValue(channels[0], 0, 0.5, 0);
+  out[1] = sampleParticleScalarValue(channels[1], 0, 0.5, 0);
+  out[2] = sampleParticleScalarValue(channels[2], 0, 0.5, 0);
+  out[3] = sampleParticleScalarValue(channels[3], 0, 0.5, 0);
+  return out;
 }
 
 function updateTrailHistory(
@@ -2476,16 +2632,15 @@ function sampleRuntimeParticleColor(
   );
 }
 
+/** Writes into `color` (the caller's scratch) and returns it. */
 function applyDepthInk(color: Vec4, depth: number, enabled: boolean): Vec4 {
   if (!enabled) return color;
   const depthInk = clamp(depth * 0.035, -0.28, 0.28);
   const brightness = 1 - depthInk;
-  return [
-    color[0] * brightness,
-    color[1] * brightness,
-    color[2] * brightness,
-    color[3],
-  ];
+  color[0] *= brightness;
+  color[1] *= brightness;
+  color[2] *= brightness;
+  return color;
 }
 
 interface TextureSheetFrameSet {
@@ -2856,6 +3011,11 @@ function particleAlignmentDirection(
   return direction;
 }
 
+// Alignment-scale scratch (module scope: consumed fully within the call).
+const alignmentScaleTip: Vec3 = [0, 0, 0];
+const alignmentScaleStart: PixiVfxProjectionPoint = { x: 0, y: 0 };
+const alignmentScaleEnd: PixiVfxProjectionPoint = { x: 0, y: 0 };
+
 function particleProjectedAlignmentScale(
   world: Vec3,
   direction: Vec3,
@@ -2864,13 +3024,12 @@ function particleProjectedAlignmentScale(
   const length = Math.hypot(direction[0], direction[1], direction[2]);
   if (length <= 0.000001) return 1;
   const inverseLength = 1 / length;
-  const tip: Vec3 = [
-    world[0] + direction[0] * inverseLength,
-    world[1] + direction[1] * inverseLength,
-    world[2] + direction[2] * inverseLength,
-  ];
-  const start = projection.project(world);
-  const end = projection.project(tip);
+  const tip = alignmentScaleTip;
+  tip[0] = world[0] + direction[0] * inverseLength;
+  tip[1] = world[1] + direction[1] * inverseLength;
+  tip[2] = world[2] + direction[2] * inverseLength;
+  const start = projection.project(world, alignmentScaleStart);
+  const end = projection.project(tip, alignmentScaleEnd);
   if (!start || !end || start.visible === false || end.visible === false) {
     return 1;
   }
@@ -2918,11 +3077,12 @@ function fallbackTextureKeyForEmitter(
 }
 
 function createParticle(texture: Texture): Particle {
-  return new Particle({
-    texture,
-    anchorX: 0.5,
-    anchorY: 0.5,
-  });
+  // Numeric tint path: gameplay samplers already produce packed RGB, so the
+  // generic Color parser (and its temporary arrays) is skipped per particle.
+  const particle = new NumericTintParticle(texture);
+  particle.anchorX = 0.5;
+  particle.anchorY = 0.5;
+  return particle;
 }
 
 function copyBloomParticle(
@@ -2960,22 +3120,34 @@ function copyBloomParticle(
   particle.alpha = bloomSourceAlpha(sample.baseAlpha, brightPeak);
 }
 
-function huePreservingHdrToSdrColor(hdrColor: Vec3): Vec3 {
+function huePreservingHdrToSdrColor(
+  hdrColor: Vec3,
+  out: Vec3 = [0, 0, 0],
+): Vec3 {
   const peak = Math.max(hdrColor[0], hdrColor[1], hdrColor[2]);
   const norm = peak > 1 ? 1 / peak : 1;
-  return [hdrColor[0] * norm, hdrColor[1] * norm, hdrColor[2] * norm];
+  out[0] = hdrColor[0] * norm;
+  out[1] = hdrColor[1] * norm;
+  out[2] = hdrColor[2] * norm;
+  return out;
 }
 
-function toneMapPreviewHdrColor(hdrColor: Vec3, exposureStops: number): Vec3 {
+function toneMapPreviewHdrColor(
+  hdrColor: Vec3,
+  exposureStops: number,
+  out: Vec3 = [0, 0, 0],
+): Vec3 {
   const exposure = 2 ** clamp(exposureStops, -2, 2);
-  const exposed: Vec3 = [
-    hdrColor[0] * exposure,
-    hdrColor[1] * exposure,
-    hdrColor[2] * exposure,
-  ];
-  const peak = Math.max(exposed[0], exposed[1], exposed[2]);
-  if (peak <= 1) return exposed;
-  return acesFittedPreviewToneMap(exposed);
+  out[0] = hdrColor[0] * exposure;
+  out[1] = hdrColor[1] * exposure;
+  out[2] = hdrColor[2] * exposure;
+  const peak = Math.max(out[0], out[1], out[2]);
+  if (peak <= 1) return out;
+  const mapped = acesFittedPreviewToneMap(out);
+  out[0] = mapped[0];
+  out[1] = mapped[1];
+  out[2] = mapped[2];
+  return out;
 }
 
 function acesFittedPreviewToneMap(color: Vec3): Vec3 {
@@ -3082,17 +3254,12 @@ function bloomSourceAlpha(baseAlpha: number, brightPeak: number): number {
   return clamp(baseAlpha * encodedPeak, 0, 1);
 }
 
-function estimateParticleUploadBytes({
-  liveParticles,
-  trailParticles,
-  bloomParticles = 0,
-  dynamicUvs,
-}: {
-  liveParticles: number;
-  trailParticles: number;
-  bloomParticles?: number;
-  dynamicUvs: boolean;
-}): number {
+function estimateParticleUploadBytes(
+  liveParticles: number,
+  trailParticles: number,
+  bloomParticles: number,
+  dynamicUvs: boolean,
+): number {
   const particleCount =
     Math.max(0, liveParticles) +
     Math.max(0, trailParticles) +
@@ -3235,14 +3402,136 @@ function seedFromSubEmitterRequest(
   );
 }
 
-function dedupeTextureRefs(
-  refs: readonly VfxTextureAssetRef[],
-): VfxTextureAssetRef[] {
-  const byPath = new Map<string, VfxTextureAssetRef>();
-  for (const ref of refs) {
-    if (!byPath.has(ref.path)) byPath.set(ref.path, ref);
+function copyArray<T>(source: readonly T[], target: T[]): void {
+  target.length = source.length;
+  for (let i = 0; i < source.length; i++) target[i] = source[i]!;
+}
+
+function dedupeInPlace<T>(values: T[]): void {
+  let count = 0;
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i]!;
+    let duplicate = false;
+    for (let j = 0; j < count; j++) {
+      if (values[j] === value) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) values[count++] = value;
   }
-  return [...byPath.values()];
+  values.length = count;
+}
+
+function dedupeTextureRefsInPlace(values: VfxTextureAssetRef[]): void {
+  let count = 0;
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i]!;
+    let duplicate = false;
+    for (let j = 0; j < count; j++) {
+      if (values[j]!.path === value.path) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) values[count++] = value;
+  }
+  values.length = count;
+}
+
+/**
+ * Per-view scratch for the draw loop. Every per-particle intermediate (motion,
+ * module sample, projection point, direction vectors, colors and the render
+ * sample itself) is written into these retained objects, so a steady-state
+ * frame allocates nothing per particle.
+ */
+interface ParticleDrawScratch {
+  motion: ParticleMotionResult;
+  world: Vec3;
+  motionSample: ParticleMotionSample;
+  projected: PixiVfxProjectionPoint;
+  spawnDirection: Vec3;
+  motionDirection: Vec3;
+  localAxis: Vec3;
+  initialColor: Vec4;
+  initialColorScratch: Vec4;
+  hdrColor: Vec3;
+  sdrColor: Vec3;
+  composedColor: Vec4;
+  sample: ParticleRenderSample;
+}
+
+function createParticleDrawScratch(texture: Texture): ParticleDrawScratch {
+  const motion: ParticleMotionResult = {
+    position: [0, 0, 0],
+    velocity: [0, 0, 0],
+    scratchA: [0, 0, 0],
+    scratchB: [0, 0, 0],
+  };
+  const world: Vec3 = [0, 0, 0];
+  return {
+    motion,
+    world,
+    motionSample: {
+      seed: 0,
+      normalizedAge: 0,
+      loopAge: 0,
+      ageSeconds: 0,
+      timeSeconds: 0,
+      world,
+      velocity: motion.velocity,
+    },
+    projected: { x: 0, y: 0, visible: true },
+    spawnDirection: [0, 1, 0],
+    motionDirection: [0, 1, 0],
+    localAxis: [1, 0, 0],
+    initialColor: [1, 1, 1, 1],
+    initialColorScratch: [1, 1, 1, 1],
+    hdrColor: [0, 0, 0],
+    sdrColor: [0, 0, 0],
+    composedColor: [1, 1, 1, 1],
+    sample: {
+      visible: true,
+      x: 0,
+      y: 0,
+      depth: 0,
+      pixelSize: 0,
+      pixelsPerWorldUnit: 1,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      anchorX: 0.5,
+      anchorY: 0.5,
+      tint: 0xffffff,
+      alpha: 1,
+      baseAlpha: 1,
+      hdrColor: [0, 0, 0],
+      emissiveStrength: 0,
+      texture,
+      key: "",
+      start: 0,
+      normalizedAge: 0,
+      loopAge: 0,
+      speed: 0,
+      seed: 0,
+    },
+  };
+}
+
+function compareDepthNearFirst(a: DepthSortEntry, b: DepthSortEntry): number {
+  return a.depth - b.depth || a.start - b.start || a.seed - b.seed;
+}
+
+function compareDepthFarFirst(a: DepthSortEntry, b: DepthSortEntry): number {
+  return b.depth - a.depth || a.start - b.start || a.seed - b.seed;
+}
+
+function compareOldestFirst(a: DepthSortEntry, b: DepthSortEntry): number {
+  return b.start - a.start || b.seed - a.seed;
+}
+
+function compareYoungestFirst(a: DepthSortEntry, b: DepthSortEntry): number {
+  return a.start - b.start || a.seed - b.seed;
 }
 
 function dedupeStrings(values: readonly string[]): string[] {

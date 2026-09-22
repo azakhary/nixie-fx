@@ -106,4 +106,17 @@ describe("collectParticleTextureRefs", () => {
       "fx/node-local.png",
     ]);
   });
+
+  it("skips disabled emitters", () => {
+    const effect = normalizeParticleEffect({
+      id: "disabled",
+      emitters: [
+        { id: "on", render: { texture: "fx/on.png" } },
+        { id: "off", enabled: false, render: { texture: "fx/off.png" } },
+      ],
+    });
+    expect(collectParticleTextureRefs(effect).map((ref) => ref.path)).toEqual([
+      "fx/on.png",
+    ]);
+  });
 });

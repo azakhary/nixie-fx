@@ -1,5 +1,25 @@
 import { type Vec2, type Vec3, type Vec4 } from "./math";
 import {
+  normalizeCurvePoints,
+  sampleParticleCurve,
+  scaleCurvePointY,
+  PARTICLE_SCALAR_VALUE_LIMIT,
+} from "./ParticleCurve";
+export {
+  curveAutoTangents,
+  sampleParticleCurve,
+  PARTICLE_SCALAR_CURVE_POINT_LIMIT,
+} from "./ParticleCurve";
+import {
+  sampleParticleScalarValue,
+  sampleParticleScalarValueIntegralAverage,
+} from "./ParticleScalarSampling";
+export {
+  integrateParticleScalarValue,
+  sampleParticleScalarValue,
+} from "./ParticleScalarSampling";
+import { ParticleEffectRuntimeDefinition } from "./ParticleEffectRuntimeDefinition";
+import {
   normalizeOptionalMaterialInstance,
   type MaterialInstance,
 } from "./materialInstance";
@@ -77,7 +97,6 @@ export type ParticleGradientMode = "blend" | "fixed";
  */
 export type ParticleScalarXAxis = "lifetime" | "loopAge";
 
-const PARTICLE_SCALAR_VALUE_LIMIT = 100000;
 export const PARTICLE_HDR_COLOR_INTENSITY_MAX_EXPOSURE = 50;
 export const PARTICLE_HDR_COLOR_INTENSITY_VALUE_LIMIT =
   2 ** PARTICLE_HDR_COLOR_INTENSITY_MAX_EXPOSURE;
@@ -530,15 +549,10 @@ export const PARTICLE_INSTANCE_STRIDE = 18;
 export const PARTICLE_RUNTIME_VECTOR_STRIDE = 3;
 export const PARTICLE_RUNTIME_FLAG_LOCAL_SPACE = 1 << 0;
 export const PARTICLE_RUNTIME_FLAG_ALIGN_TO_DIRECTION = 1 << 1;
-export const PARTICLE_SCALAR_CURVE_POINT_LIMIT = 8;
 export const PARTICLE_GRADIENT_STOP_LIMIT = 8;
 export const PARTICLE_BURST_SCHEDULE_LIMIT = 16;
 export const PARTICLE_TAU = Math.PI * 2;
 
-const PARTICLE_CURVE_DEFAULT_WEIGHT = 1 / 3;
-const PARTICLE_CURVE_SLOPE_LIMIT = 1000;
-const PARTICLE_CURVE_WEIGHT_LIMIT = 1;
-const PARTICLE_SCALAR_INTEGRAL_STEPS = 64;
 const PARTICLE_BURST_CATCHUP_LOOP_LIMIT = 256;
 const PARTICLE_TIME_EPSILON = 0.000001;
 const PARTICLE_TRIGGER_FLAG_NORMALIZED_TIME = 1 << 0;
@@ -2118,83 +2132,6 @@ export function copyParticleScalarValue(
   };
 }
 
-function sampleParticleScalarValueAtTime(
-  value: ParticleScalarValue,
-  time: number,
-  mix: number,
-): number {
-  if (value.mode === "random") {
-    return value.min + (value.max - value.min) * mix;
-  }
-  const multiplier = value.multiplier ?? 1;
-  if (value.mode === "curve") {
-    return sampleParticleCurve(value.curve, time) * multiplier;
-  }
-  if (value.mode === "randomCurve") {
-    const a = sampleParticleCurve(value.curve, time);
-    const b = sampleParticleCurve(value.curveB, time);
-    return (a + (b - a) * mix) * multiplier;
-  }
-  return value.value;
-}
-
-export function sampleParticleScalarValue(
-  value: ParticleScalarValue,
-  t: number,
-  random: number,
-  loopAgeT?: number,
-): number {
-  // `t` is the default (normalized lifetime) axis. When the curve opts into the
-  // loop-age axis and the caller supplied it, sample against that instead.
-  const axisT =
-    value.xAxis === "loopAge" && loopAgeT !== undefined ? loopAgeT : t;
-  const time = clampNumber(axisT, 0, 1);
-  const mix = clampNumber(random, 0, 1);
-  return sampleParticleScalarValueAtTime(value, time, mix);
-}
-
-export function integrateParticleScalarValue(
-  value: ParticleScalarValue,
-  t: number,
-  random: number,
-  loopAgeT?: number,
-): number {
-  const axisT =
-    value.xAxis === "loopAge" && loopAgeT !== undefined ? loopAgeT : t;
-  const end = clampNumber(axisT, 0, 1);
-  const mix = clampNumber(random, 0, 1);
-  if (end <= 0) return 0;
-  if (value.mode === "random") {
-    return (value.min + (value.max - value.min) * mix) * end;
-  }
-  if (value.mode === "constant") {
-    return value.value * end;
-  }
-  const steps = Math.max(1, Math.ceil(end * PARTICLE_SCALAR_INTEGRAL_STEPS));
-  let previous = sampleParticleScalarValueAtTime(value, 0, mix);
-  let area = 0;
-  for (let i = 1; i <= steps; i++) {
-    const time = (end * i) / steps;
-    const next = sampleParticleScalarValueAtTime(value, time, mix);
-    area += (previous + next) * 0.5 * (end / steps);
-    previous = next;
-  }
-  return area;
-}
-
-function sampleParticleScalarValueIntegralAverage(
-  value: ParticleScalarValue,
-  t: number,
-  random: number,
-  loopAgeT?: number,
-): number {
-  const axisT =
-    value.xAxis === "loopAge" && loopAgeT !== undefined ? loopAgeT : t;
-  const end = clampNumber(axisT, 0, 1);
-  if (end <= 0) return sampleParticleScalarValue(value, t, random, loopAgeT);
-  return integrateParticleScalarValue(value, t, random, loopAgeT) / end;
-}
-
 export function compileParticleScalarValue(
   value: ParticleScalarValue,
   samples = 64,
@@ -2292,164 +2229,6 @@ export function particleScalarMinMax(
     min: Math.min(...values),
     max: Math.max(...values),
   };
-}
-
-export function sampleParticleCurve(
-  points: readonly ParticleCurvePoint[],
-  t: number,
-): number {
-  const sorted = isSampleReadyParticleCurve(points)
-    ? points
-    : normalizeCurvePoints(points, [
-        { x: 0, y: 0 },
-        { x: 1, y: 0 },
-      ]);
-  const x = clampNumber(t, 0, 1);
-  if (x <= sorted[0]!.x) return sorted[0]!.y;
-  const last = sorted[sorted.length - 1]!;
-  if (x >= last.x) return last.y;
-  const tangents = curveTangents(sorted);
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const a = sorted[i]!;
-    const b = sorted[i + 1]!;
-    if (x > b.x) continue;
-    return sampleParticleCurveSegment(a, b, tangents[i]!, tangents[i + 1]!, x);
-  }
-  return last.y;
-}
-
-function sampleParticleCurveSegment(
-  a: ParticleCurvePoint,
-  b: ParticleCurvePoint,
-  autoSlopeOut: number,
-  autoSlopeIn: number,
-  x: number,
-): number {
-  const dx = Math.max(0.000001, b.x - a.x);
-  const slopeOut = curvePointSlopeOut(a, autoSlopeOut);
-  const slopeIn = curvePointSlopeIn(b, autoSlopeIn);
-  const weightOut = curvePointWeightOut(a);
-  const weightIn = curvePointWeightIn(b);
-  const x1 = a.x + dx * weightOut;
-  const y1 = a.y + slopeOut * dx * weightOut;
-  const x2 = b.x - dx * weightIn;
-  const y2 = b.y - slopeIn * dx * weightIn;
-  const linearU = clampNumber((x - a.x) / dx, 0, 1);
-  const u =
-    weightOut === PARTICLE_CURVE_DEFAULT_WEIGHT &&
-    weightIn === PARTICLE_CURVE_DEFAULT_WEIGHT
-      ? linearU
-      : solveBezierParameterForX(a.x, x1, x2, b.x, x, linearU);
-  return cubicBezier(a.y, y1, y2, b.y, u);
-}
-
-function curvePointSlopeIn(
-  point: ParticleCurvePoint,
-  autoSlope: number,
-): number {
-  return point.slopeIn ?? point.slope ?? autoSlope;
-}
-
-function curvePointSlopeOut(
-  point: ParticleCurvePoint,
-  autoSlope: number,
-): number {
-  return point.slopeOut ?? point.slope ?? autoSlope;
-}
-
-function curvePointWeightIn(point: ParticleCurvePoint): number {
-  return point.weightIn ?? PARTICLE_CURVE_DEFAULT_WEIGHT;
-}
-
-function curvePointWeightOut(point: ParticleCurvePoint): number {
-  return point.weightOut ?? PARTICLE_CURVE_DEFAULT_WEIGHT;
-}
-
-function solveBezierParameterForX(
-  x0: number,
-  x1: number,
-  x2: number,
-  x3: number,
-  targetX: number,
-  initial: number,
-): number {
-  let u = clampNumber(initial, 0, 1);
-  for (let i = 0; i < 6; i++) {
-    const x = cubicBezier(x0, x1, x2, x3, u) - targetX;
-    const dx = cubicBezierDerivative(x0, x1, x2, x3, u);
-    if (Math.abs(x) < 0.000001) return u;
-    if (Math.abs(dx) < 0.000001) break;
-    const next = u - x / dx;
-    if (next < 0 || next > 1) break;
-    u = next;
-  }
-
-  let bestStart = 0;
-  let bestEnd = 1;
-  let bestDistance = Infinity;
-  let previousU = 0;
-  let previousX = cubicBezier(x0, x1, x2, x3, previousU) - targetX;
-  for (let i = 1; i <= 24; i++) {
-    const nextU = i / 24;
-    const nextX = cubicBezier(x0, x1, x2, x3, nextU) - targetX;
-    const nextDistance = Math.abs(nextX);
-    if (nextDistance < bestDistance) {
-      bestDistance = nextDistance;
-      bestStart = previousU;
-      bestEnd = nextU;
-    }
-    if (
-      previousX === 0 ||
-      nextX === 0 ||
-      (previousX < 0 && nextX > 0) ||
-      (previousX > 0 && nextX < 0)
-    ) {
-      bestStart = previousU;
-      bestEnd = nextU;
-      break;
-    }
-    previousU = nextU;
-    previousX = nextX;
-  }
-
-  let low = bestStart;
-  let high = bestEnd;
-  for (let i = 0; i < 24; i++) {
-    const mid = (low + high) * 0.5;
-    const midX = cubicBezier(x0, x1, x2, x3, mid) - targetX;
-    const lowX = cubicBezier(x0, x1, x2, x3, low) - targetX;
-    if (Math.abs(midX) < 0.000001) return mid;
-    if ((lowX <= 0 && midX >= 0) || (lowX >= 0 && midX <= 0)) {
-      high = mid;
-    } else {
-      low = mid;
-    }
-  }
-  return (low + high) * 0.5;
-}
-
-function cubicBezier(
-  p0: number,
-  p1: number,
-  p2: number,
-  p3: number,
-  u: number,
-): number {
-  const v = 1 - u;
-  return (
-    v * v * v * p0 + 3 * v * v * u * p1 + 3 * v * u * u * p2 + u * u * u * p3
-  );
-}
-
-function cubicBezierDerivative(
-  p0: number,
-  p1: number,
-  p2: number,
-  p3: number,
-  u: number,
-): number {
-  const v = 1 - u;
-  return 3 * v * v * (p1 - p0) + 6 * v * u * (p2 - p1) + 3 * u * u * (p3 - p2);
 }
 
 export function normalizeParticleGradient(
@@ -2747,238 +2526,6 @@ function normalizeScalarCurveMagnitude(
     editorMin,
     editorMax,
   };
-}
-
-function scaleCurvePointY(
-  point: ParticleCurvePoint,
-  scale: number,
-  valueLimit = PARTICLE_SCALAR_VALUE_LIMIT,
-): ParticleCurvePoint {
-  return {
-    ...point,
-    y: clampFiniteNumber(point.y * scale, -valueLimit, valueLimit),
-    ...(typeof point.slope === "number"
-      ? {
-          slope: clampFiniteNumber(
-            point.slope * scale,
-            -PARTICLE_CURVE_SLOPE_LIMIT,
-            PARTICLE_CURVE_SLOPE_LIMIT,
-          ),
-        }
-      : {}),
-    ...(typeof point.slopeIn === "number"
-      ? {
-          slopeIn: clampFiniteNumber(
-            point.slopeIn * scale,
-            -PARTICLE_CURVE_SLOPE_LIMIT,
-            PARTICLE_CURVE_SLOPE_LIMIT,
-          ),
-        }
-      : {}),
-    ...(typeof point.slopeOut === "number"
-      ? {
-          slopeOut: clampFiniteNumber(
-            point.slopeOut * scale,
-            -PARTICLE_CURVE_SLOPE_LIMIT,
-            PARTICLE_CURVE_SLOPE_LIMIT,
-          ),
-        }
-      : {}),
-  };
-}
-
-function normalizeCurvePoint(
-  value: unknown,
-  valueLimit = PARTICLE_SCALAR_VALUE_LIMIT,
-): ParticleCurvePoint | undefined {
-  if (!isRecord(value)) return undefined;
-  const point: ParticleCurvePoint = {
-    x: clampNumber(numberOr(value.x, 0), 0, 1),
-    y: clampFiniteNumber(numberOr(value.y, 0), -valueLimit, valueLimit),
-  };
-  const slope = normalizeCurveSlope(value.slope);
-  const slopeIn = normalizeCurveSlope(value.slopeIn);
-  const slopeOut = normalizeCurveSlope(value.slopeOut);
-  const weightIn = normalizeCurveWeight(value.weightIn);
-  const weightOut = normalizeCurveWeight(value.weightOut);
-  if (slope !== undefined) point.slope = slope;
-  if (slopeIn !== undefined) point.slopeIn = slopeIn;
-  if (slopeOut !== undefined) point.slopeOut = slopeOut;
-  if (weightIn !== undefined) point.weightIn = weightIn;
-  if (weightOut !== undefined) point.weightOut = weightOut;
-  return point;
-}
-
-function normalizeCurveSlope(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? clampFiniteNumber(
-        value,
-        -PARTICLE_CURVE_SLOPE_LIMIT,
-        PARTICLE_CURVE_SLOPE_LIMIT,
-      )
-    : undefined;
-}
-
-function normalizeCurveWeight(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? clampFiniteNumber(value, 0, PARTICLE_CURVE_WEIGHT_LIMIT)
-    : undefined;
-}
-
-function normalizeCurvePoints(
-  value: unknown,
-  fallback: readonly ParticleCurvePoint[],
-  valueLimit = PARTICLE_SCALAR_VALUE_LIMIT,
-): ParticleCurvePoint[] {
-  const source = Array.isArray(value) && value.length > 0 ? value : fallback;
-  const points = source
-    .map((point) => normalizeCurvePoint(point, valueLimit))
-    .filter((point): point is ParticleCurvePoint => Boolean(point))
-    .sort((a, b) => a.x - b.x)
-    .slice(0, PARTICLE_SCALAR_CURVE_POINT_LIMIT);
-  if (points.length === 0) {
-    return [
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
-    ];
-  }
-  if (points.length === 1) {
-    const only = points[0]!;
-    return [
-      { ...only, x: 0 },
-      { ...only, x: 1 },
-    ];
-  }
-  points[0]!.x = 0;
-  points[points.length - 1]!.x = 1;
-  return points;
-}
-
-function isSampleReadyParticleCurve(
-  points: readonly ParticleCurvePoint[],
-): boolean {
-  if (points.length < 2) return false;
-  const first = points[0]!;
-  const last = points[points.length - 1]!;
-  if (first.x !== 0 || last.x !== 1) return false;
-  let previousX = -Infinity;
-  for (const point of points) {
-    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
-    if (!isFiniteOptionalCurveSlope(point.slope)) return false;
-    if (!isFiniteOptionalCurveSlope(point.slopeIn)) return false;
-    if (!isFiniteOptionalCurveSlope(point.slopeOut)) return false;
-    if (!isFiniteOptionalCurveWeight(point.weightIn)) return false;
-    if (!isFiniteOptionalCurveWeight(point.weightOut)) return false;
-    if (point.x < previousX || point.x < 0 || point.x > 1) return false;
-    previousX = point.x;
-  }
-  return true;
-}
-
-function isFiniteOptionalCurveSlope(value: number | undefined): boolean {
-  return (
-    value === undefined || (typeof value === "number" && Number.isFinite(value))
-  );
-}
-
-function isFiniteOptionalCurveWeight(value: number | undefined): boolean {
-  return (
-    value === undefined ||
-    (typeof value === "number" &&
-      Number.isFinite(value) &&
-      value >= 0 &&
-      value <= PARTICLE_CURVE_WEIGHT_LIMIT)
-  );
-}
-
-const curveTangentCache = new WeakMap<
-  readonly ParticleCurvePoint[],
-  readonly number[]
->();
-
-/**
- * Memoized monotone tangents for a curve. Keyed on the points array identity;
- * the runtime normalizes curves once so the array reference is stable and this
- * hits the cache, while the editor recreates arrays on edit so it recomputes.
- */
-function curveTangents(
-  points: readonly ParticleCurvePoint[],
-): readonly number[] {
-  let cached = curveTangentCache.get(points);
-  if (!cached) {
-    cached = curveAutoTangents(points);
-    curveTangentCache.set(points, cached);
-  }
-  return cached;
-}
-
-/**
- * Shape-preserving (monotone) cubic Hermite tangents using the Fritsch-Carlson
- * method. This is what keeps the drawn graph 1:1 with the sampled runtime curve
- * (B6): a "rise to a value and hold" curve no longer overshoots past the
- * endpoint and dips back down. Tangents flatten to zero at local extrema and are
- * limited so a monotone segment never overshoots its endpoints — matching
- * common auto/clamped-auto tangent behavior. Explicit
- * per-point `slope` values (authored tangent handles, F9) are honored as-is.
- */
-export function curveAutoTangents(
-  points: readonly ParticleCurvePoint[],
-): number[] {
-  const n = points.length;
-  if (n === 0) return [];
-  if (n === 1) {
-    const only = points[0]!;
-    return [
-      typeof only.slope === "number" && Number.isFinite(only.slope)
-        ? only.slope
-        : 0,
-    ];
-  }
-  const explicit = points.map(
-    (point) => typeof point.slope === "number" && Number.isFinite(point.slope),
-  );
-  const secant = new Array<number>(n - 1);
-  for (let i = 0; i < n - 1; i++) {
-    const a = points[i]!;
-    const b = points[i + 1]!;
-    secant[i] = (b.y - a.y) / Math.max(0.000001, b.x - a.x);
-  }
-  const tangents = new Array<number>(n);
-  for (let i = 0; i < n; i++) {
-    if (explicit[i]) {
-      tangents[i] = points[i]!.slope!;
-      continue;
-    }
-    if (i === 0) {
-      tangents[i] = secant[0]!;
-    } else if (i === n - 1) {
-      tangents[i] = secant[n - 2]!;
-    } else {
-      const left = secant[i - 1]!;
-      const right = secant[i]!;
-      // Local extreme or a flat neighbour -> zero tangent (no overshoot).
-      tangents[i] = left * right <= 0 ? 0 : (left + right) * 0.5;
-    }
-  }
-  // Fritsch-Carlson limiter: keep each monotone segment from overshooting.
-  // Only auto tangents are scaled; authored tangents are left intact.
-  for (let i = 0; i < n - 1; i++) {
-    const d = secant[i]!;
-    if (d === 0) {
-      if (!explicit[i]) tangents[i] = 0;
-      if (!explicit[i + 1]) tangents[i + 1] = 0;
-      continue;
-    }
-    const alpha = tangents[i]! / d;
-    const beta = tangents[i + 1]! / d;
-    const sumSq = alpha * alpha + beta * beta;
-    if (sumSq > 9) {
-      const tau = 3 / Math.sqrt(sumSq);
-      if (!explicit[i]) tangents[i] = tau * alpha * d;
-      if (!explicit[i + 1]) tangents[i + 1] = tau * beta * d;
-    }
-  }
-  return tangents;
 }
 
 function normalizeGradientColorStops(
@@ -3293,7 +2840,11 @@ export class ParticleEffectRunner {
   private readonly maxEventsPerFrame: number;
   private readonly maxSubEmitterRequestsPerFrame: number;
   private rng = new ParticleRng(0x7f4a7c15);
-  private effect: ParticleEffectDefinition;
+  /**
+   * The definition this runner simulates. Shared (frozen) definitions are
+   * reused as-is; anything else is cloned so host edits stay isolated.
+   */
+  private readonly effectDefinition: ParticleEffectRuntimeDefinition;
   private position: Vec3 = [0, 0, 0];
   private readonly spawnSample = createParticleSpawnSample();
   /**
@@ -3349,11 +2900,18 @@ export class ParticleEffectRunner {
         ),
       ),
     );
-    this.effect = cloneParticleEffect(effect);
+    this.effectDefinition = new ParticleEffectRuntimeDefinition(
+      effect,
+      cloneParticleEffect,
+    );
     this.states = this.effect.emitters.map(
       (emitter) => new ParticleEmitterRuntimeState(emitter.maxParticles),
     );
     this.refreshCapacity();
+  }
+
+  private get effect(): ParticleEffectDefinition {
+    return this.effectDefinition.value;
   }
 
   get definition(): ParticleEffectDefinition {
@@ -3374,7 +2932,7 @@ export class ParticleEffectRunner {
     timeSeconds: number,
     seed = 0x7f4a7c15,
   ): void {
-    this.effect = cloneParticleEffect(effect);
+    this.effectDefinition.replace(effect);
     this.position[0] = position[0];
     this.position[1] = position[1];
     this.position[2] = position[2];
@@ -3396,7 +2954,7 @@ export class ParticleEffectRunner {
   }
 
   updateDefinition(effect: ParticleEffectDefinition): void {
-    this.effect = cloneParticleEffect(effect);
+    this.effectDefinition.replace(effect);
     this.resizeStates();
     this.refreshCapacity();
   }

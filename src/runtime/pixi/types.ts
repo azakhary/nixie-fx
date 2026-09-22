@@ -4,6 +4,7 @@ import type { Vec4 } from "../../engine/math";
 import type {
   ParticleEffectDefinition,
   ParticleEffectEvent,
+  ParticleOpacitySource,
   ParticleSubEmitterSpawnRequest,
 } from "../../engine/particles";
 import type { VfxTextureAssetRef, VfxTextureProvider } from "../assets/types";
@@ -18,7 +19,26 @@ export type {
   PixiVfxUnsupportedModule,
 } from "./support";
 
-export type PixiVfxTextureProvider = VfxTextureProvider<Texture>;
+export interface PixiVfxTextureProvider extends VfxTextureProvider<Texture> {
+  /**
+   * Loaded atlas/material bindings stay fixed until an explicit provider or
+   * definition setter runs. Hosts that ship immutable imported assets set this
+   * so the draw path can skip the per-frame render-binding resolve; editors
+   * (whose assets change live) leave it unset.
+   */
+  readonly staticAssets?: boolean;
+  /**
+   * Optional build-time alpha variants, owned by the provider rather than the
+   * effect. When present the renderer asks the provider for the derived alpha
+   * texture instead of deriving one from canvas pixels at runtime; returning
+   * `undefined` falls back to the runtime derivation.
+   */
+  getAlphaTexture?(
+    ref: VfxTextureAssetRef,
+    opacitySource: ParticleOpacitySource,
+    invert: boolean,
+  ): Texture | undefined;
+}
 
 /**
  * Resolves a material's `shaderId` to its authored `ShaderGraph` so the
@@ -38,7 +58,14 @@ export interface PixiVfxProjectionPoint {
 }
 
 export interface PixiVfxProjection {
-  project(world: Vec3): PixiVfxProjectionPoint | undefined;
+  /**
+   * Project a world position to screen space. `out`, when supplied, is filled
+   * and returned so per-particle projection allocates nothing.
+   */
+  project(
+    world: Vec3,
+    out?: PixiVfxProjectionPoint,
+  ): PixiVfxProjectionPoint | undefined;
   pixelsPerWorldUnit(world: Vec3): number;
   depth?(world: Vec3): number;
 }
