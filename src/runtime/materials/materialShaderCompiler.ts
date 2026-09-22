@@ -3,7 +3,6 @@ import { numberOr } from "../../engine/particleModuleSettingUtils";
 import type { Vec4 } from "../../engine/math";
 import type { MaterialArtifact, MaterialFixedDescriptor } from "./artifact";
 import {
-  isSpriteMasterGraph,
   resolveMaterialParamValue,
   resolveMaterialTextureNodeBinding,
   type MaterialEdge,
@@ -241,12 +240,6 @@ class MaterialGlslCompiler {
           : "materialSampleMain(vUV).a");
     const maskExpr = opacityMask ?? "vec4(1.0)";
     const emissiveScale = fixed ? "uFixedEmissive" : "0.0";
-    // Custom graphs own their Particle Color/Alpha connections. Applying the
-    // input again here squares authored opacity (and tint). Sprite Master is
-    // the implicit fixed-function graph and still needs the particle factor.
-    const particleModulation = isSpriteMasterGraph(this.graph)
-      ? "outColor *= vColor;"
-      : "// Custom graph already owns particle color and opacity.";
 
     // Opaque ignores opacity/opacityMask entirely: no discard, alpha forced to
     // 1 in the output encode (I12-G).
@@ -258,9 +251,9 @@ void main(void) {
   vec4 outColor = baseColor;
   outColor.rgb = outColor.rgb * uFixedTint.rgb + emissiveColor.rgb;
   outColor.rgb *= (1.0 + max(0.0, ${emissiveScale}));
-  ${particleModulation}
+  outColor *= vColor;
   outColor.a = 1.0;
-  gl_FragColor = materialEncodeOutput(outColor);
+  gl_FragColor = outColor;
 }
 `;
     }
@@ -278,10 +271,10 @@ void main(void) {
     // soft alpha encode byte-identical to before.
     const alphaEncode =
       this.graph.blend === "masked"
-        ? `${particleModulation}
+        ? `outColor *= vColor;
   outColor.a = 1.0;`
         : `outColor.a = opacityValue * uFixedTint.a * uFixedOpacity;
-  ${particleModulation}`;
+  outColor *= vColor;`;
 
     return `${MATERIAL_FRAGMENT_HEADER}${this.samplerUniformDeclarations()}
 void main(void) {
@@ -294,7 +287,7 @@ void main(void) {
   outColor.rgb = outColor.rgb * uFixedTint.rgb + emissiveColor.rgb;
   outColor.rgb *= (1.0 + max(0.0, ${emissiveScale}));
   ${alphaEncode}
-  gl_FragColor = materialEncodeOutput(outColor);
+  gl_FragColor = outColor;
 }
 `;
   }
@@ -402,7 +395,7 @@ void main(void) {
         if (uniform) {
           // A node-picked texture overrides MainTex; the SubUV frame-blend stays
           // on the MainTex path (deferred), so sample the picked texture directly.
-          return `materialTextureSample(${uniform}, fract(${inputUv()}))`;
+          return `texture2D(${uniform}, fract(${inputUv()}))`;
         }
         return p.blend === true
           ? `materialSampleSubUvBlend(${inputUv()})`
@@ -644,7 +637,7 @@ void main(void) {
    */
   private sampleTexture(node: MaterialNode, uvExpr: string): string {
     const uniform = this.nodeSamplerUniform.get(node.id);
-    if (uniform) return `materialTextureSample(${uniform}, fract(${uvExpr}))`;
+    if (uniform) return `texture2D(${uniform}, fract(${uvExpr}))`;
     return `materialSampleMain(${uvExpr})`;
   }
 
