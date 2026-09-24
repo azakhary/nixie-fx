@@ -12,6 +12,8 @@ import type {
 } from "../schema/materials";
 import {
   isSpriteMasterGraph,
+  MATERIAL_LIT_OUTPUT_SLOTS,
+  MATERIAL_SCENE_LIGHTING_NODE_TYPES,
   resolveMaterialParamValue,
   resolveMaterialTextureNodeBinding,
   serializeShaderGraph,
@@ -184,6 +186,30 @@ function indexGraph(graph: ShaderGraph): GraphIndex {
   return { nodeById, edgeById, edgeSource };
 }
 
+/**
+ * Output slots the graph's shading model consumes. Normal/Roughness/Metallic
+ * only exist for lit graphs; an unlit graph ignores whatever feeds them.
+ */
+export function honoredOutputSlots(
+  graph: ShaderGraph,
+): Array<keyof ShaderGraph["outputs"]> {
+  const slots = Object.keys(graph.outputs) as Array<
+    keyof ShaderGraph["outputs"]
+  >;
+  return graph.shadingModel === "lit"
+    ? slots
+    : slots.filter((slot) => !MATERIAL_LIT_OUTPUT_SLOTS.includes(slot));
+}
+
+/** True when a lit graph wires any Normal/Roughness/Metallic output. */
+function wiresLitOutputs(graph: ShaderGraph, index: GraphIndex): boolean {
+  if (graph.shadingModel !== "lit") return false;
+  return MATERIAL_LIT_OUTPUT_SLOTS.some((slot) => {
+    const edgeId = graph.outputs[slot];
+    return !!edgeId && index.edgeSource.has(edgeId);
+  });
+}
+
 /** All node ids reachable upstream from the honored output slots. */
 function reachableFromOutputs(
   graph: ShaderGraph,
@@ -191,8 +217,8 @@ function reachableFromOutputs(
 ): Set<string> {
   const reachable = new Set<string>();
   const stack: string[] = [];
-  for (const slot of Object.keys(graph.outputs)) {
-    const edgeId = graph.outputs[slot as keyof typeof graph.outputs];
+  for (const slot of honoredOutputSlots(graph)) {
+    const edgeId = graph.outputs[slot];
     if (!edgeId) continue;
     const sourceNode = index.edgeSource.get(edgeId);
     if (sourceNode) stack.push(sourceNode);
@@ -381,8 +407,8 @@ function feedsOnlyTextureUv(
  * channel; folding names into global controls would apply them to other slots.
  */
 function isTier1Faithful(graph: ShaderGraph, index: GraphIndex): boolean {
-  for (const slot of Object.keys(graph.outputs)) {
-    const edgeId = graph.outputs[slot as keyof typeof graph.outputs];
+  for (const slot of honoredOutputSlots(graph)) {
+    const edgeId = graph.outputs[slot];
     if (!edgeId) continue; // unwired output is trivially faithful
     const sourceId = index.edgeSource.get(edgeId);
     if (!sourceId) continue;
@@ -465,6 +491,21 @@ export function analyzeGraphTier(graph: ShaderGraph): TierAnalysis {
     };
   }
 
+  // Scene lighting reads and lit surface outputs (normal/roughness/metallic)
+  // are per-pixel by definition: they need the real fragment shader.
+  const readsSceneLighting = [...reachable].some((id) => {
+    const node = index.nodeById.get(id);
+    return !!node && MATERIAL_SCENE_LIGHTING_NODE_TYPES.has(node.type);
+  });
+  if (readsSceneLighting || wiresLitOutputs(graph, index)) {
+    return {
+      tier: "tier2-shader",
+      deferredNodeIds: [],
+      vertexUvNodeIds: [],
+      perParticleNodeIds: collectPerParticleNodeIds(graph, index, reachable),
+    };
+  }
+
   // Vertex-stage animated UV: animated Panner/Rotator that feeds ONLY texture UV.
   const vertexUvNodeIds: string[] = [];
   for (const id of reachable) {
@@ -478,18 +519,7 @@ export function analyzeGraphTier(graph: ShaderGraph): TierAnalysis {
   const vertexUvSet = new Set(vertexUvNodeIds);
 
   // Per-particle: any reachable Particle*/perParticle dynamicParameter node.
-  const perParticleNodeIds: string[] = [];
-  for (const id of reachable) {
-    const node = index.nodeById.get(id);
-    if (!node) continue;
-    if (PER_PARTICLE_NODE_TYPES.has(node.type)) {
-      perParticleNodeIds.push(node.id);
-    } else if (node.type === "dynamicParameter") {
-      perParticleNodeIds.push(node.id);
-    } else if (node.type === "param" && paramIsPerParticle(node, graph)) {
-      perParticleNodeIds.push(node.id);
-    }
-  }
+  const perParticleNodeIds = collectPerParticleNodeIds(graph, index, reachable);
   const perParticle = perParticleNodeIds.length > 0;
 
   // Polar UVs are nonlinear: neither vertex interpolation nor the static
@@ -609,6 +639,26 @@ export function analyzeGraphTier(graph: ShaderGraph): TierAnalysis {
     vertexUvNodeIds,
     perParticleNodeIds,
   };
+}
+
+function collectPerParticleNodeIds(
+  graph: ShaderGraph,
+  index: GraphIndex,
+  reachable: ReadonlySet<string>,
+): string[] {
+  const perParticleNodeIds: string[] = [];
+  for (const id of reachable) {
+    const node = index.nodeById.get(id);
+    if (!node) continue;
+    if (PER_PARTICLE_NODE_TYPES.has(node.type)) {
+      perParticleNodeIds.push(node.id);
+    } else if (node.type === "dynamicParameter") {
+      perParticleNodeIds.push(node.id);
+    } else if (node.type === "param" && paramIsPerParticle(node, graph)) {
+      perParticleNodeIds.push(node.id);
+    }
+  }
+  return perParticleNodeIds;
 }
 
 /** True when a vec/number value (a node's speed param) is non-zero. */
@@ -832,6 +882,33 @@ export function compileMaterial(
   instance: MaterialInstance,
   opts: CompileMaterialOptions = {},
 ): MaterialArtifact {
+  const artifact = compileMaterialTier(graph, instance, opts);
+  let usesSceneLighting = false;
+  try {
+    const expanded = expandMaterialSubgraphs(graph);
+    const index = indexGraph(expanded);
+    for (const id of reachableFromOutputs(expanded, index)) {
+      const node = index.nodeById.get(id);
+      if (node && MATERIAL_SCENE_LIGHTING_NODE_TYPES.has(node.type)) {
+        usesSceneLighting = true;
+        break;
+      }
+    }
+  } catch {
+    usesSceneLighting = false;
+  }
+  return {
+    ...artifact,
+    shadingModel: graph.shadingModel === "lit" ? "lit" : "unlit",
+    usesSceneLighting,
+  };
+}
+
+function compileMaterialTier(
+  graph: ShaderGraph,
+  instance: MaterialInstance,
+  opts: CompileMaterialOptions,
+): Omit<MaterialArtifact, "shadingModel" | "usesSceneLighting"> {
   try {
     graph = expandMaterialSubgraphs(graph);
   } catch (error) {

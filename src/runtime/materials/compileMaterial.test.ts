@@ -23,6 +23,7 @@ import {
 import { buildGradientLut, makeTexelEvaluator, sampleGradient } from "./bake";
 import type { GradientStop } from "./bake";
 import { linearToSrgb } from "../../engine/particles";
+import { createMaterialPreviewFragmentSource } from "./materialShaderCompiler";
 
 // ---------------------------------------------------------------------------
 // Graph fixture builders
@@ -1657,6 +1658,85 @@ describe("assigned material texture resources", () => {
     });
     expect(compileMaterial(g, createMaterialInstance(g, "mi")).tier).toBe(
       "tier0-bake",
+    );
+  });
+});
+
+describe("scene lighting tiers", () => {
+  const base = {
+    id: "g",
+    name: "G",
+    blend: "normal" as const,
+    params: [],
+  };
+
+  it("routes lighting-node graphs to Tier 2 and flags usesSceneLighting", () => {
+    const g = normalizeShaderGraph({
+      ...base,
+      nodes: [{ id: "l", type: "mainLightColor", inputs: {}, params: {} }],
+      edges: [
+        {
+          id: "e",
+          source: "l",
+          sourceHandle: "out",
+          target: "output",
+          targetHandle: "baseColor",
+        },
+      ],
+      outputs: { baseColor: "e" },
+    });
+    const artifact = compileMaterial(g, createMaterialInstance(g, "g"));
+    expect(artifact.tier).toBe("tier2-shader");
+    expect(artifact.usesSceneLighting).toBe(true);
+    expect(artifact.shadingModel).toBe("unlit");
+  });
+
+  it("wired Normal only escalates when the shading model is Lit", () => {
+    const nodes = [
+      { id: "tex", type: "textureSample", inputs: {}, params: {} },
+      { id: "n", type: "unpackNormal", inputs: { in: "t" }, params: {} },
+    ];
+    const edges = [
+      {
+        id: "b",
+        source: "tex",
+        sourceHandle: "out",
+        target: "output",
+        targetHandle: "baseColor",
+      },
+      {
+        id: "t",
+        source: "tex",
+        sourceHandle: "out",
+        target: "n",
+        targetHandle: "in",
+      },
+      {
+        id: "nrm",
+        source: "n",
+        sourceHandle: "out",
+        target: "output",
+        targetHandle: "normal",
+      },
+    ];
+    const unlit = normalizeShaderGraph({
+      ...base,
+      nodes,
+      edges,
+      outputs: { baseColor: "b", normal: "nrm" },
+    });
+    expect(analyzeGraphTier(unlit).tier).not.toBe("tier2-shader");
+    const lit = { ...unlit, shadingModel: "lit" as const };
+    const artifact = compileMaterial(lit, createMaterialInstance(lit, "g"));
+    expect(artifact.tier).toBe("tier2-shader");
+    expect(artifact.shadingModel).toBe("lit");
+    const fragment = createMaterialPreviewFragmentSource({
+      artifact,
+      graph: lit,
+      instance: createMaterialInstance(lit, "g"),
+    });
+    expect(fragment).toContain(
+      "nfxShadeLit(outColor.rgb * uFixedTint.rgb, ((nfxUnpackNormal(",
     );
   });
 });

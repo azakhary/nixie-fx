@@ -31,4 +31,5 @@ export * from "./runtime/backends";
 export * from "./runtime/modules";
 export * from "./runtime/schema/authoring";
 export * from "./runtime/schema/validation";
+export * from "./runtime/schema/scene";
 export * from "./runtime/support";

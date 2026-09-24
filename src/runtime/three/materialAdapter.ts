@@ -8,6 +8,8 @@ import {
   MeshStandardMaterial,
   ShaderMaterial,
   NoBlending,
+  UniformsLib,
+  UniformsUtils,
   NormalBlending,
   Vector2,
   Vector4,
@@ -79,6 +81,7 @@ export function createThreeEmitterMaterial(
   const materialGraph = materialInstance
     ? options.materialGraphProvider?.(materialInstance.shaderId)
     : undefined;
+  const litShading = isLitParticleShading(emitter, materialGraph);
   const source = resolveEmitterTexture(emitter, options, materialGraph);
   const sourceTexture = source.texture;
   const unsupportedFeatures: string[] = [];
@@ -94,6 +97,7 @@ export function createThreeEmitterMaterial(
     emitterTexturePath(emitter) ?? emitterProceduralBillboardKey(emitter) ?? "",
     emitter.render.opacitySource,
     Number(emitter.render.opacityInvert),
+    litShading ? "lit" : "unlit",
   ].join(":");
 
   if (materialInstance) {
@@ -139,6 +143,9 @@ export function createThreeEmitterMaterial(
         fixed = artifact.fixed ?? null;
       }
       if (artifact.tier === "tier2-shader") {
+        // Shader graphs light only through their own Shading Model; the
+        // emitter Shading toggle keeps meaning "fixed-function lit" so
+        // effects authored before scene lighting render unchanged.
         const shaderMaterial = createThreeShaderMaterial(
           emitter,
           sourceTexture,
@@ -226,14 +233,13 @@ export function createThreeEmitterMaterial(
     premultipliedAlpha: effectiveBlend === "premultiplied",
     side: threeSideForGraph(materialGraph),
   };
-  const material =
-    emitter.render.shading === "lit"
-      ? new MeshStandardMaterial({
-          ...materialParams,
-          metalness: 0,
-          roughness: 0.62,
-        })
-      : new MeshBasicMaterial(materialParams);
+  const material = litShading
+    ? new MeshStandardMaterial({
+        ...materialParams,
+        metalness: 0,
+        roughness: 0.62,
+      })
+    : new MeshBasicMaterial(materialParams);
 
   return {
     material,
@@ -246,6 +252,22 @@ export function createThreeEmitterMaterial(
     unsupportedFeatures,
     key,
   };
+}
+
+/**
+ * Whether a fixed-function (Tier 0/1 or texture-only) emitter renders lit on
+ * Three: the emitter's own Shading toggle or a material whose Shading Model
+ * is Lit (Unreal "Default Lit"). Tier-2 shader graphs follow only their
+ * Shading Model.
+ */
+export function isLitParticleShading(
+  emitter: ParticleEmitterDefinition,
+  materialGraph: ShaderGraph | undefined,
+): boolean {
+  return (
+    emitter.render.shading === "lit" ||
+    (!!emitter.render.material && materialGraph?.shadingModel === "lit")
+  );
 }
 
 export function isThreeParticleMaterial(
@@ -393,10 +415,18 @@ function createThreeShaderMaterial(
     artifact.blend,
   );
   const materialOwnsBlend = materialBlendOverridesEmitter(effectiveBlend);
+  // Lit graphs and graphs reading lighting nodes bind Three's scene lights.
+  const sceneLit = graph.shadingModel === "lit" || !!artifact.usesSceneLighting;
   const material = new ShaderMaterial({
-    vertexShader: THREE_PARTICLE_MATERIAL_VERTEX_SHADER,
-    fragmentShader: compiled.fragment,
+    vertexShader: sceneLit
+      ? THREE_LIT_PARTICLE_MATERIAL_VERTEX_SHADER
+      : THREE_PARTICLE_MATERIAL_VERTEX_SHADER,
+    fragmentShader: sceneLit
+      ? `${THREE_SCENE_LIGHTS_FRAGMENT_PREFIX}${compiled.fragment}`
+      : compiled.fragment,
+    lights: sceneLit,
     uniforms: {
+      ...(sceneLit ? UniformsUtils.clone(UniformsLib.lights) : {}),
       uTexture: { value: graphTexture(mainTexture) },
       uTime: { value: 0 },
       uFixedTint: { value: new Vector4(...fixed.tint) },
@@ -454,6 +484,32 @@ void main() {
   vColor = vec4(uParticleColor.rgb * uParticleColor.a, uParticleColor.a);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
+`;
+
+const THREE_LIT_PARTICLE_MATERIAL_VERTEX_SHADER = `
+varying vec2 vUV;
+varying vec4 vColor;
+varying vec3 vNfxViewPosition;
+varying vec3 vNfxViewNormal;
+varying vec3 vNfxWorldPosition;
+uniform vec4 uParticleColor;
+uniform vec4 uDynamicParams;
+
+void main() {
+  vUV = uv;
+  vColor = vec4(uParticleColor.rgb * uParticleColor.a, uParticleColor.a);
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  vNfxViewPosition = -mvPosition.xyz;
+  vNfxViewNormal = normalize(normalMatrix * normal);
+  vNfxWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+  gl_Position = projectionMatrix * mvPosition;
+}
+`;
+
+/** Pulls Three's light uniforms/helpers in ahead of the material fragment. */
+const THREE_SCENE_LIGHTS_FRAGMENT_PREFIX = `#define NFX_SCENE_LIGHTS
+#include <common>
+#include <lights_pars_begin>
 `;
 
 function textureSheetTiles(

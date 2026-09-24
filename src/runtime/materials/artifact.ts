@@ -2,6 +2,7 @@ import type { Vec4 } from "../../engine/math";
 import type {
   MaterialBlend,
   MaterialPerParticleFeed,
+  MaterialShadingModel,
 } from "../schema/materials";
 
 /**
@@ -143,4 +144,11 @@ export interface MaterialArtifact {
    * stay translucent regardless of the particle's own alpha (I12-A).
    */
   opacityIsConstantOne: boolean;
+  /** The graph's shading model ("unlit" when not authored). */
+  shadingModel?: MaterialShadingModel;
+  /**
+   * True when a reachable node reads scene lighting (light direction/color,
+   * ambient, world normal, ...). Backends must bind scene light data.
+   */
+  usesSceneLighting?: boolean;
 }

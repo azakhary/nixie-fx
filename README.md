@@ -158,6 +158,34 @@ Always inspect the exported backend support report. A blocked effect must not
 be silently treated as supported, and a partial effect can contain deliberate
 backend approximations.
 
+## Scene lighting
+
+Particles are unlit by default. A material whose **Shading Model** is `lit`
+(or an emitter with `render.shading: "lit"`) is shaded by the Three.js
+scene's own lights — any `DirectionalLight`, `PointLight`, `SpotLight`,
+`AmbientLight` or `HemisphereLight` you already have. Lit graphs can also
+drive Normal (tangent space), Roughness and Metallic, and any material can
+read the lights directly through the Lighting nodes (Main Light Direction /
+Color, Ambient Color, Scene Diffuse Lighting, World Normal, View Direction,
+World Position). PixiJS renders lit materials unlit.
+
+The editor previews effects against `.scene` files: preview-only lighting
+setups that effects never reference. Games that want the same lighting can
+load one and add its lights to their scene:
+
+```ts
+import { parseSceneDefinition } from "nixie-fx";
+import { createThreeSceneLights } from "nixie-fx/three";
+
+const lights = createThreeSceneLights(parseSceneDefinition(sceneJsonText));
+scene.add(lights.group);
+// lights.update(editedDefinition) retunes in place; lights.dispose() removes them.
+```
+
+Scene files use Three.js physical light units and glTF conventions (lights
+shine along local -Z, rotations are Euler degrees in Unity's Y·X·Z order,
+colors are sRGB hex). Their `props` list is editor-only stand-in geometry.
+
 ## Examples
 
 - [Three.js digit embers](./examples/threejs) — the NixieFX landing scene as a

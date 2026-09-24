@@ -10,7 +10,15 @@ import {
   type MaterialNode,
   type ShaderGraph,
 } from "../schema/materials";
-import { MATERIAL_FRAGMENT_HEADER } from "./materialFragmentPrelude";
+import {
+  MATERIAL_FRAGMENT_HEADER,
+  MATERIAL_LIGHTING_PRELUDE,
+} from "./materialFragmentPrelude";
+import {
+  DEFAULT_MATERIAL_METALLIC,
+  DEFAULT_MATERIAL_ROUGHNESS,
+  MATERIAL_SCENE_LIGHTING_NODE_TYPES,
+} from "../schema/materials";
 
 export interface MaterialSamplerBinding {
   nodeId: string;
@@ -216,6 +224,38 @@ class MaterialGlslCompiler {
     );
   }
 
+  /**
+   * Shared fragment header. The lighting prelude is appended only for lit
+   * graphs and graphs that read scene lighting, so every other material's
+   * source stays byte-identical.
+   */
+  private header(): string {
+    const needsLighting =
+      this.graph.shadingModel === "lit" ||
+      this.graph.nodes.some(
+        (node) =>
+          MATERIAL_SCENE_LIGHTING_NODE_TYPES.has(node.type) ||
+          node.type === "unpackNormal",
+      );
+    return needsLighting
+      ? `${MATERIAL_FRAGMENT_HEADER}${MATERIAL_LIGHTING_PRELUDE}`
+      : MATERIAL_FRAGMENT_HEADER;
+  }
+
+  /** The RGB surface line: lit shading or the unlit tint + emissive fold. */
+  private surfaceColorLine(): string {
+    if (this.graph.shadingModel !== "lit") {
+      return "outColor.rgb = outColor.rgb * uFixedTint.rgb + emissiveColor.rgb;";
+    }
+    const normal = this.slotExpr("normal");
+    const roughness =
+      this.slotScalarExpr("roughness") ?? DEFAULT_MATERIAL_ROUGHNESS.toFixed(8);
+    const metallic =
+      this.slotScalarExpr("metallic") ?? DEFAULT_MATERIAL_METALLIC.toFixed(8);
+    const normalExpr = normal ? `(${normal}).xyz` : "vec3(0.0, 0.0, 1.0)";
+    return `outColor.rgb = nfxShadeLit(outColor.rgb * uFixedTint.rgb, ${normalExpr}, ${roughness}, ${metallic}) + emissiveColor.rgb;`;
+  }
+
   /** The sampler-uniform header lines for the emitted per-node samplers. */
   private samplerUniformDeclarations(): string {
     if (this.samplers.length === 0) return "";
@@ -244,12 +284,12 @@ class MaterialGlslCompiler {
     // Opaque ignores opacity/opacityMask entirely: no discard, alpha forced to
     // 1 in the output encode (I12-G).
     if (this.graph.blend === "opaque") {
-      return `${MATERIAL_FRAGMENT_HEADER}${this.samplerUniformDeclarations()}
+      return `${this.header()}${this.samplerUniformDeclarations()}
 void main(void) {
   vec4 baseColor = ${baseExpr};
   vec4 emissiveColor = ${emissiveExpr};
   vec4 outColor = baseColor;
-  outColor.rgb = outColor.rgb * uFixedTint.rgb + emissiveColor.rgb;
+  ${this.surfaceColorLine()}
   outColor.rgb *= (1.0 + max(0.0, ${emissiveScale}));
   outColor *= vColor;
   outColor.a = 1.0;
@@ -276,7 +316,7 @@ void main(void) {
         : `outColor.a = opacityValue * uFixedTint.a * uFixedOpacity;
   outColor *= vColor;`;
 
-    return `${MATERIAL_FRAGMENT_HEADER}${this.samplerUniformDeclarations()}
+    return `${this.header()}${this.samplerUniformDeclarations()}
 void main(void) {
   vec4 baseColor = ${baseExpr};
   vec4 emissiveColor = ${emissiveExpr};
@@ -284,7 +324,7 @@ void main(void) {
   float maskValue = ${maskValueExpr};
   if (maskValue < uClipValue) discard;
   vec4 outColor = baseColor;
-  outColor.rgb = outColor.rgb * uFixedTint.rgb + emissiveColor.rgb;
+  ${this.surfaceColorLine()}
   outColor.rgb *= (1.0 + max(0.0, ${emissiveScale}));
   ${alphaEncode}
   gl_FragColor = outColor;
@@ -332,7 +372,7 @@ void main(void) {
       valueExpr,
       resolveNodePreviewSourceHandle(node, sourceHandle),
     );
-    return `${MATERIAL_FRAGMENT_HEADER}${this.samplerUniformDeclarations()}
+    return `${this.header()}${this.samplerUniformDeclarations()}
 void main(void) {
   vec4 value = ${selectedExpr};
   gl_FragColor = vec4(clamp(value.rgb, 0.0, 1.0), ${node.type === "polarCoordinates" ? "1.0" : "clamp(value.a, 0.0, 1.0)"});
@@ -467,6 +507,26 @@ void main(void) {
         return "vec4(0.0)";
       case "dynamicParameter":
         return "uDynamicParams";
+      case "sceneWorldNormal":
+        return "vec4(nfxViewToWorld(nfxGeometryViewNormal()), 0.0)";
+      case "sceneWorldPosition":
+        return "vec4(nfxWorldPosition(), 1.0)";
+      case "sceneViewDirection":
+        return "vec4(nfxViewToWorld(nfxViewDirectionView()), 0.0)";
+      case "mainLightDirection":
+        return "vec4(nfxViewToWorld(nfxMainLightDirectionView()), 0.0)";
+      case "mainLightColor":
+        return "vec4(nfxMainLightColor(), 1.0)";
+      case "sceneAmbientColor":
+        return "vec4(nfxAmbientColor(), 1.0)";
+      case "sceneDiffuseLighting":
+        return "vec4(nfxDiffuseLighting(), 1.0)";
+      case "unpackNormal": {
+        const strength = node.inputs.strength
+          ? inputScalar("strength", 1)
+          : this.number(p.strength, 1).toFixed(8);
+        return `nfxUnpackNormal(${input("in", "vec4(0.5, 0.5, 1.0, 1.0)")}, ${strength})`;
+      }
       case "multiply":
         return `((${input("a", this.scalar(this.number(p.a, 1)))}) * (${input("b", this.scalar(this.number(p.b, 1)))}))`;
       case "add":

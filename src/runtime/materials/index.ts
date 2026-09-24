@@ -5,3 +5,4 @@ export * from "./noise";
 export * from "./materialShaderCompiler";
 
 export * from "./subgraphs";
+export { MATERIAL_PREVIEW_LIGHTS_DEFINE } from "./materialFragmentPrelude";

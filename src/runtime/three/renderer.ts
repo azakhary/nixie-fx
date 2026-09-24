@@ -1321,11 +1321,10 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
           effectiveBlend === "premultiplied";
       }
       if ("emissive" in material) {
+        // Only lit (MeshStandard) materials carry emissive: the HDR part of
+        // the particle color glows on top of the scene lighting.
         material.emissive.copy(sample.color);
-        material.emissiveIntensity =
-          emitter.render.shading === "lit"
-            ? Math.max(0, sample.emissiveStrength - 1)
-            : 0;
+        material.emissiveIntensity = Math.max(0, sample.emissiveStrength - 1);
       }
       material.needsUpdate = true;
     }

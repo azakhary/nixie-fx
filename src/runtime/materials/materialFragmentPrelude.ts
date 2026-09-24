@@ -99,3 +99,197 @@ vec4 materialSampleSubUvBlend(vec2 uv) {
   return mix(current, texture2D(uTexture, nextUv), clamp(vColor.a, 0.0, 1.0));
 }
 `;
+
+/**
+ * Scene-lighting helpers, emitted only for lit graphs or graphs that read
+ * lighting nodes. The host selects the light source with a define placed
+ * before the fragment:
+ *  - `NFX_SCENE_LIGHTS`   Three.js: real scene lights (`lights: true`, the
+ *    host also includes <common> + <lights_pars_begin> and the lit varyings).
+ *  - `NFX_PREVIEW_LIGHTS` 2D material previews: the stock key/fill/gradient
+ *    lights of the default scene, with a camera-facing surface.
+ *  - neither (Pixi):      lit shading passes BaseColor through unlit and the
+ *    lighting nodes return neutral values (full light, no ambient).
+ *
+ * Light-node outputs are "multiply-ready": BaseColor * MainLightColor *
+ * saturate(dot(N, L)) equals the diffuse term the Lit shading model computes
+ * (Three's Lambert BRDF already divides by PI).
+ */
+export const MATERIAL_LIGHTING_PRELUDE = `
+const float NFX_RECIPROCAL_PI = 0.3183098861837907;
+
+#ifdef NFX_SCENE_LIGHTS
+varying vec3 vNfxViewPosition;
+varying vec3 vNfxViewNormal;
+varying vec3 vNfxWorldPosition;
+
+vec3 nfxGeometryViewNormal() {
+  vec3 n = normalize(vNfxViewNormal);
+  return gl_FrontFacing ? n : -n;
+}
+vec3 nfxViewPosition() { return -vNfxViewPosition; }
+vec3 nfxViewDirectionView() {
+  return isOrthographic ? vec3(0.0, 0.0, 1.0) : normalize(vNfxViewPosition);
+}
+vec3 nfxViewToWorld(vec3 v) { return normalize((vec4(v, 0.0) * viewMatrix).xyz); }
+vec3 nfxWorldPosition() { return vNfxWorldPosition; }
+vec3 nfxApplyTangentNormal(vec3 n, vec3 tangentNormal) {
+  vec3 p = -vNfxViewPosition;
+  vec3 dp1 = dFdx(p);
+  vec3 dp2 = dFdy(p);
+  vec2 duv1 = dFdx(vUV);
+  vec2 duv2 = dFdy(vUV);
+  vec3 dp2perp = cross(dp2, n);
+  vec3 dp1perp = cross(n, dp1);
+  vec3 t = dp2perp * duv1.x + dp1perp * duv2.x;
+  vec3 b = dp2perp * duv1.y + dp1perp * duv2.y;
+  float det = max(dot(t, t), dot(b, b));
+  if (det <= 0.0) return n;
+  float scale = inversesqrt(det) * (gl_FrontFacing ? 1.0 : -1.0);
+  return normalize(mat3(t * scale, b * scale, n) * tangentNormal);
+}
+#else
+vec3 nfxGeometryViewNormal() { return vec3(0.0, 0.0, 1.0); }
+vec3 nfxViewPosition() { return vec3(vUV * 2.0 - 1.0, 0.0); }
+vec3 nfxViewDirectionView() { return vec3(0.0, 0.0, 1.0); }
+vec3 nfxViewToWorld(vec3 v) { return v; }
+vec3 nfxWorldPosition() { return vec3(vUV - 0.5, 0.0); }
+vec3 nfxApplyTangentNormal(vec3 n, vec3 tangentNormal) {
+  return normalize(tangentNormal);
+}
+#endif
+
+vec3 nfxMainLightDirectionView() {
+#ifdef NFX_SCENE_LIGHTS
+#if NUM_DIR_LIGHTS > 0
+  return directionalLights[0].direction;
+#else
+  return normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+#endif
+#elif defined(NFX_PREVIEW_LIGHTS)
+  return normalize(vec3(3.0, 6.0, 5.0));
+#else
+  return vec3(0.0, 0.0, 1.0);
+#endif
+}
+
+vec3 nfxMainLightColor() {
+#ifdef NFX_SCENE_LIGHTS
+#if NUM_DIR_LIGHTS > 0
+  return directionalLights[0].color * NFX_RECIPROCAL_PI;
+#else
+  return vec3(0.0);
+#endif
+#elif defined(NFX_PREVIEW_LIGHTS)
+  return vec3(2.2 * NFX_RECIPROCAL_PI);
+#else
+  return vec3(1.0);
+#endif
+}
+
+vec3 nfxAmbientIrradiance(vec3 viewNormal) {
+#ifdef NFX_SCENE_LIGHTS
+  vec3 irradiance = ambientLightColor;
+#if NUM_HEMI_LIGHTS > 0
+  for (int i = 0; i < NUM_HEMI_LIGHTS; i++) {
+    irradiance += getHemisphereLightIrradiance(hemisphereLights[i], viewNormal);
+  }
+#endif
+  return irradiance;
+#elif defined(NFX_PREVIEW_LIGHTS)
+  float w = 0.5 * viewNormal.y + 0.5;
+  return mix(vec3(0.0823, 0.1170, 0.1590), vec3(0.9301, 0.9473, 1.0), w) * 1.15;
+#else
+  return vec3(0.0);
+#endif
+}
+
+vec3 nfxSpecularGGX(vec3 l, vec3 v, vec3 n, vec3 f0, float roughness) {
+  float alpha = max(roughness * roughness, 0.0025);
+  vec3 h = normalize(l + v);
+  float dotNL = clamp(dot(n, l), 0.0, 1.0);
+  float dotNV = clamp(dot(n, v), 0.0, 1.0);
+  float dotNH = clamp(dot(n, h), 0.0, 1.0);
+  float dotVH = clamp(dot(v, h), 0.0, 1.0);
+  vec3 fresnel = f0 + (vec3(1.0) - f0) * pow(1.0 - dotVH, 5.0);
+  float a2 = alpha * alpha;
+  float visV = dotNL * sqrt(a2 + (1.0 - a2) * dotNV * dotNV);
+  float visL = dotNV * sqrt(a2 + (1.0 - a2) * dotNL * dotNL);
+  float visibility = 0.5 / max(visV + visL, 0.000001);
+  float denom = dotNH * dotNH * (a2 - 1.0) + 1.0;
+  float distribution = NFX_RECIPROCAL_PI * a2 / max(denom * denom, 0.000001);
+  return fresnel * (visibility * distribution);
+}
+
+vec3 nfxLightContribution(vec3 l, vec3 color, vec3 n, vec3 v, vec3 diffuseColor, vec3 f0, float roughness, float specular) {
+  float dotNL = clamp(dot(n, l), 0.0, 1.0);
+  vec3 irradiance = dotNL * color;
+  return irradiance * (diffuseColor * NFX_RECIPROCAL_PI + specular * nfxSpecularGGX(l, v, n, f0, roughness));
+}
+
+vec3 nfxShadeSurface(vec3 albedo, vec3 n, vec3 v, vec3 p, float roughness, float metallic, float specular) {
+  vec3 diffuseColor = albedo * (1.0 - metallic);
+  vec3 f0 = mix(vec3(0.04), albedo, metallic);
+  vec3 color = vec3(0.0);
+#ifdef NFX_SCENE_LIGHTS
+  IncidentLight light;
+#if NUM_DIR_LIGHTS > 0
+  for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
+    getDirectionalLightInfo(directionalLights[i], light);
+    color += nfxLightContribution(light.direction, light.color, n, v, diffuseColor, f0, roughness, specular);
+  }
+#endif
+#if NUM_POINT_LIGHTS > 0
+  for (int i = 0; i < NUM_POINT_LIGHTS; i++) {
+    getPointLightInfo(pointLights[i], p, light);
+    if (light.visible) color += nfxLightContribution(light.direction, light.color, n, v, diffuseColor, f0, roughness, specular);
+  }
+#endif
+#if NUM_SPOT_LIGHTS > 0
+  for (int i = 0; i < NUM_SPOT_LIGHTS; i++) {
+    getSpotLightInfo(spotLights[i], p, light);
+    if (light.visible) color += nfxLightContribution(light.direction, light.color, n, v, diffuseColor, f0, roughness, specular);
+  }
+#endif
+#elif defined(NFX_PREVIEW_LIGHTS)
+  color += nfxLightContribution(normalize(vec3(3.0, 6.0, 5.0)), vec3(2.2), n, v, diffuseColor, f0, roughness, specular);
+  color += nfxLightContribution(normalize(vec3(-4.0, 2.5, -3.0)), vec3(0.3467, 0.4851, 1.0) * 0.55, n, v, diffuseColor, f0, roughness, specular);
+#endif
+  color += nfxAmbientIrradiance(n) * diffuseColor * NFX_RECIPROCAL_PI;
+  return color;
+}
+
+/** Lit shading model: BaseColor lit by the scene (unlit passthrough on Pixi). */
+vec3 nfxShadeLit(vec3 albedo, vec3 tangentNormal, float roughness, float metallic) {
+#if defined(NFX_SCENE_LIGHTS) || defined(NFX_PREVIEW_LIGHTS)
+  vec3 n = nfxApplyTangentNormal(nfxGeometryViewNormal(), tangentNormal);
+  return nfxShadeSurface(albedo, n, nfxViewDirectionView(), nfxViewPosition(), clamp(roughness, 0.0, 1.0), clamp(metallic, 0.0, 1.0), 1.0);
+#else
+  return albedo;
+#endif
+}
+
+/** Diffuse irradiance (direct + ambient) at the surface, multiply-ready. */
+vec3 nfxDiffuseLighting() {
+#if defined(NFX_SCENE_LIGHTS) || defined(NFX_PREVIEW_LIGHTS)
+  vec3 n = nfxGeometryViewNormal();
+  return nfxShadeSurface(vec3(1.0), n, nfxViewDirectionView(), nfxViewPosition(), 1.0, 0.0, 0.0);
+#else
+  return vec3(1.0);
+#endif
+}
+
+/** Normal-map texel (0..1) to a tangent-space normal, Unity "Normal Unpack". */
+vec4 nfxUnpackNormal(vec4 texel, float strength) {
+  vec3 n = texel.xyz * 2.0 - 1.0;
+  n.xy *= strength;
+  return vec4(normalize(vec3(n.xy, max(n.z, 0.0001))), 1.0);
+}
+
+vec3 nfxAmbientColor() {
+  return nfxAmbientIrradiance(nfxGeometryViewNormal()) * NFX_RECIPROCAL_PI;
+}
+`;
+
+/** Define that makes a lit/lighting-node fragment use the stock preview lights. */
+export const MATERIAL_PREVIEW_LIGHTS_DEFINE = "#define NFX_PREVIEW_LIGHTS\n";

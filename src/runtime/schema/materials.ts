@@ -98,16 +98,51 @@ export const MATERIAL_MAIN_TEX_PARAM_NAME = "MainTex";
 
 export type MaterialParamBuiltinRole = "mainTex";
 
-/** Unlit-honored output sinks only (techspec §2). */
+/**
+ * Output sinks. `normal` (tangent space), `roughness` and `metallic` only
+ * affect `lit` materials on the Three backend; unlit/Pixi ignore them.
+ */
 export type MaterialOutputSlot =
-  "baseColor" | "emissive" | "opacity" | "opacityMask";
+  | "baseColor"
+  | "emissive"
+  | "opacity"
+  | "opacityMask"
+  | "normal"
+  | "roughness"
+  | "metallic";
 
 export const MATERIAL_OUTPUT_SLOTS: readonly MaterialOutputSlot[] = [
   "baseColor",
   "emissive",
   "opacity",
   "opacityMask",
+  "normal",
+  "roughness",
+  "metallic",
 ];
+
+/** Output slots that only a lit shading model consumes. */
+export const MATERIAL_LIT_OUTPUT_SLOTS: readonly MaterialOutputSlot[] = [
+  "normal",
+  "roughness",
+  "metallic",
+];
+
+/**
+ * Unreal "Shading Model". `unlit` outputs BaseColor + Emissive as-is; `lit`
+ * shades BaseColor with the scene lights (Three backend only — Pixi keeps
+ * unlit compositing) and then adds Emissive.
+ */
+export type MaterialShadingModel = "unlit" | "lit";
+
+export const MATERIAL_SHADING_MODELS: readonly MaterialShadingModel[] = [
+  "unlit",
+  "lit",
+];
+
+/** Lit defaults when the Roughness / Metallic outputs are unwired. */
+export const DEFAULT_MATERIAL_ROUGHNESS = 0.62;
+export const DEFAULT_MATERIAL_METALLIC = 0;
 
 export type DynamicChannelLabels = [string, string, string, string];
 
@@ -219,6 +254,15 @@ export type MaterialNodeType =
   | "particleSize"
   | "particleDirection"
   | "particlePosition"
+  // --- scene lighting reads (Three backend; Pixi/preview use a default key light) ---
+  | "sceneWorldNormal"
+  | "sceneWorldPosition"
+  | "sceneViewDirection"
+  | "mainLightDirection"
+  | "mainLightColor"
+  | "sceneAmbientColor"
+  | "sceneDiffuseLighting"
+  | "unpackNormal" // [0,1] normal-map texel -> [-1,1] tangent normal
   | "subgraph" // author-time reuse, inlined
   | "output"; // the Main node
 
@@ -279,9 +323,29 @@ export const MATERIAL_NODE_TYPES: readonly MaterialNodeType[] = [
   "particleSize",
   "particleDirection",
   "particlePosition",
+  "sceneWorldNormal",
+  "sceneWorldPosition",
+  "sceneViewDirection",
+  "mainLightDirection",
+  "mainLightColor",
+  "sceneAmbientColor",
+  "sceneDiffuseLighting",
+  "unpackNormal",
   "subgraph",
   "output",
 ];
+
+/** Node types that read scene lighting data (always a Tier-2 shader). */
+export const MATERIAL_SCENE_LIGHTING_NODE_TYPES: ReadonlySet<MaterialNodeType> =
+  new Set<MaterialNodeType>([
+    "sceneWorldNormal",
+    "sceneWorldPosition",
+    "sceneViewDirection",
+    "mainLightDirection",
+    "mainLightColor",
+    "sceneAmbientColor",
+    "sceneDiffuseLighting",
+  ]);
 
 const MATERIAL_NODE_TYPE_SET = new Set<string>(MATERIAL_NODE_TYPES);
 
@@ -324,6 +388,8 @@ export interface ShaderGraph {
   id: string;
   name: string;
   blend: MaterialBlend;
+  /** Undefined == "unlit" (every material authored before scene lighting). */
+  shadingModel?: MaterialShadingModel;
   /**
    * Unreal Opacity Mask Clip Value; default 0.333. Only meaningful when an
    * opacityMask output is wired. Constant => baked threshold (Tier 0);
@@ -627,6 +693,7 @@ export function normalizeShaderGraph(value: unknown): ShaderGraph {
   if (MATERIAL_RENDER_FACES.includes(source.side as MaterialRenderFace)) {
     graph.side = source.side as MaterialRenderFace;
   }
+  if (source.shadingModel === "lit") graph.shadingModel = "lit";
   if (isRecord(source.subgraph) && Array.isArray(source.subgraph.outputs)) {
     graph.params = graph.params.map((p) => ({
       ...p,
@@ -793,6 +860,7 @@ export function serializeShaderGraph(
   if (graph.side !== undefined) {
     out.side = graph.side;
   }
+  if (graph.shadingModel === "lit") out.shadingModel = "lit";
   if (graph.subgraph) out.subgraph = graph.subgraph;
   if (graph.builtin) out.builtin = graph.builtin;
   return out;
