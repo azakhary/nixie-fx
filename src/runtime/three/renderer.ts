@@ -22,6 +22,7 @@ import {
   Texture,
   Vector3,
   type Camera,
+  type MeshStandardMaterial,
   type Object3D,
   type Scene,
 } from "three";
@@ -1315,10 +1316,15 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
         material.blending = threeBlendingForEffectiveBlend(effectiveBlend);
         material.premultipliedAlpha = effectiveBlend === "premultiplied";
         material.opacity = sample.alpha;
+        // A sampled texture alpha is live per-pixel opacity: flipping to the
+        // opaque pass at sample.alpha 1 would disable blending and draw the
+        // sprite's full quad. Untextured (or constant-opacity) particles keep
+        // the sample.alpha gate, so opaque mesh assets stay opaque (I12-A).
         material.transparent =
           sample.alpha < 1 ||
           effectiveBlend === "additive" ||
-          effectiveBlend === "premultiplied";
+          effectiveBlend === "premultiplied" ||
+          materialSamplesTextureAlpha(material, emitter);
       }
       if ("emissive" in material) {
         // Only lit (MeshStandard) materials carry emissive: the HDR part of
@@ -1839,6 +1845,21 @@ function createEmitterView(
     unsupportedFeatures: material.unsupportedFeatures,
     hostMaterial: hostMaterial !== null,
   };
+}
+
+/**
+ * True when a fixed-function particle material's output alpha comes from a
+ * texture: a derived alpha map, or the map's own alpha channel when the
+ * emitter's opacity source is texture alpha.
+ */
+function materialSamplesTextureAlpha(
+  material: MeshBasicMaterial | MeshStandardMaterial,
+  emitter: ParticleEmitterDefinition,
+): boolean {
+  return (
+    material.alphaMap !== null ||
+    (material.map !== null && emitter.render.opacitySource === "textureAlpha")
+  );
 }
 
 function applyThreeShaderSample(

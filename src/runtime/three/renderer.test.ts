@@ -528,6 +528,97 @@ describe("ThreeVfxRenderer transform MVP", () => {
     expect(legacyAdditive.blending).toBe(AdditiveBlending);
   });
 
+  it("keeps texture-alpha billboards translucent at particle alpha 1 on the per-particle mesh path", () => {
+    const texture = new Texture();
+    const render = (
+      render: Record<string, unknown>,
+      modules: Record<string, unknown> = {},
+    ) => {
+      const renderer = new ThreeVfxRenderer({
+        scene: new Scene(),
+        camera: createCamera(),
+        textureProvider: {
+          getTexture: (ref) =>
+            ref.path === "fx/soft.png" ? texture : undefined,
+        },
+      });
+      const instance = renderer.createEffect(
+        normalizeParticleEffect({
+          id: "texture-alpha-mesh-path",
+          targetProfile: "three-world-3d",
+          emitters: [
+            {
+              id: "soft",
+              ...singleBurstEmitter(),
+              modules: { color: false, ...modules },
+              render,
+            },
+          ],
+        }),
+      );
+      renderer.update(1 / 60);
+      return firstParticleMaterial(instance);
+    };
+
+    // Lit, textureless billboard: the procedural circle's alpha must blend.
+    const litProcedural = render({ shading: "lit", depthWrite: true });
+    expect(litProcedural.map).not.toBeNull();
+    expect(litProcedural.transparent).toBe(true);
+    expect(litProcedural.blending).toBe(NormalBlending);
+    // The depth-write gate still follows sample.alpha (I12-A), unchanged.
+    expect(litProcedural.depthWrite).toBe(true);
+
+    // Unlit textured billboard forced off the instanced path by trails.
+    const unlitTrails = render({ texture: "fx/soft.png" }, { trails: true });
+    expect(unlitTrails.map).toBe(texture);
+    expect(unlitTrails.transparent).toBe(true);
+
+    // Constant opacity ignores texture alpha, so alpha 1 stays opaque.
+    const constantOpacity = render({
+      shading: "lit",
+      texture: "fx/soft.png",
+      opacitySource: "constant",
+    });
+    expect(constantOpacity.transparent).toBe(false);
+  });
+
+  it("keeps untextured mesh-asset particles opaque and depth-writing at alpha 1", () => {
+    const renderer = new ThreeVfxRenderer({
+      scene: new Scene(),
+      camera: createCamera(),
+      meshProvider: {
+        getMeshGeometry: (ref) =>
+          ref.path === "meshes/coin.glb" ? new BoxGeometry(1, 1, 1) : null,
+      },
+    });
+    const instance = renderer.createEffect(
+      normalizeParticleEffect({
+        id: "opaque-mesh-asset",
+        targetProfile: "three-world-3d",
+        emitters: [
+          {
+            id: "coin",
+            ...singleBurstEmitter(),
+            modules: { color: false },
+            mode: "mesh",
+            mesh: {
+              renderMode: "meshAsset",
+              asset: { type: "mesh", id: "coin", path: "meshes/coin.glb" },
+            },
+            render: { depthWrite: true },
+          },
+        ],
+      }),
+    );
+
+    renderer.update(1 / 60);
+    const material = firstParticleMaterial(instance);
+
+    expect(material.map).toBeNull();
+    expect(material.transparent).toBe(false);
+    expect(material.depthWrite).toBe(true);
+  });
+
   it("renders a premultiplied emitter as a transparent, non-depth-writing normal-blended pass (I13-A)", () => {
     const renderPremultiplied = (alpha: number) => {
       const renderer = new ThreeVfxRenderer({
