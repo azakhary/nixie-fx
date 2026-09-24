@@ -32,6 +32,35 @@ export interface SceneDefinition {
   lights: SceneLight[];
   /** Preview-only stand-in meshes (e.g. a character or floor to judge scale). */
   props: SceneProp[];
+  /**
+   * Post-process bloom the effects were authored against. Hosts that want
+   * the editor look apply it (see `createThreeHdrEffectLayer` in nixie-fx/three);
+   * a file without it reads as the editor's stock bloom.
+   */
+  bloom: SceneBloomSettings;
+}
+
+export type SceneBloomDownscale = "quarter" | "half";
+
+/**
+ * Editor preview bloom. `threshold` and `exposure` also drive the runtime's
+ * per-particle HDR encoding, so the same numbers must reach both the particle
+ * renderer and the bloom pass.
+ */
+export interface SceneBloomSettings {
+  enabled: boolean;
+  /** HDR peak above which a pixel starts to glow. */
+  threshold: number;
+  /** 0..4 glow strength. */
+  intensity: number;
+  /** Exposure in stops (-2..2) applied before tone mapping. */
+  exposure: number;
+  /** 0..1 glow spread. */
+  scatter: number;
+  /** Pixi bloom quality; Three ignores it. */
+  highQualityFiltering: boolean;
+  /** Pixi bloom render scale; Three ignores it. */
+  downscale: SceneBloomDownscale;
 }
 
 /** Unity "Environment Lighting › Source": flat Color or Sky/Ground Gradient. */
@@ -217,6 +246,47 @@ export function createDefaultSceneProp(
  * The stock look every preview used before scenes existed: a sky/ground
  * gradient plus a white key light and a cool fill light.
  */
+export function createDefaultSceneBloom(): SceneBloomSettings {
+  return {
+    enabled: true,
+    threshold: 1,
+    intensity: 4,
+    exposure: 0,
+    scatter: 0.7,
+    highQualityFiltering: false,
+    downscale: "quarter",
+  };
+}
+
+export function normalizeSceneBloom(value: unknown): SceneBloomSettings {
+  const fallback = createDefaultSceneBloom();
+  const source = isRecord(value) ? value : {};
+  return {
+    enabled:
+      typeof source.enabled === "boolean" ? source.enabled : fallback.enabled,
+    threshold: clampNumber(
+      numberOr(source.threshold, fallback.threshold),
+      0,
+      10,
+    ),
+    intensity: clampNumber(
+      numberOr(source.intensity, fallback.intensity),
+      0,
+      4,
+    ),
+    exposure: clampNumber(numberOr(source.exposure, fallback.exposure), -2, 2),
+    scatter: clampNumber(numberOr(source.scatter, fallback.scatter), 0, 1),
+    highQualityFiltering:
+      typeof source.highQualityFiltering === "boolean"
+        ? source.highQualityFiltering
+        : fallback.highQualityFiltering,
+    downscale:
+      source.downscale === "half" || source.downscale === "quarter"
+        ? source.downscale
+        : fallback.downscale,
+  };
+}
+
 export function createDefaultScene(name = "Default Scene"): SceneDefinition {
   return {
     app: "vfx-editor",
@@ -244,6 +314,7 @@ export function createDefaultScene(name = "Default Scene"): SceneDefinition {
       }),
     ],
     props: [],
+    bloom: createDefaultSceneBloom(),
   };
 }
 
@@ -353,6 +424,7 @@ export function normalizeSceneDefinition(value: unknown): SceneDefinition {
     ambient: normalizeSceneAmbient(source.ambient),
     lights: uniqueIds(lights),
     props: uniqueIds(props),
+    bloom: normalizeSceneBloom(source.bloom),
   };
 }
 

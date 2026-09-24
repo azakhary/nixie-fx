@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createDefaultScene,
+  createDefaultSceneBloom,
   createDefaultSceneLight,
   normalizeSceneDefinition,
   parseSceneDefinition,
@@ -79,5 +80,44 @@ describe("scene definition", () => {
 
   it("rejects non-scene JSON", () => {
     expect(() => parseSceneDefinition('{"kind":"particle-effect"}')).toThrow();
+  });
+
+  it("reads a scene without bloom as the editor's stock bloom", () => {
+    const scene = normalizeSceneDefinition({ kind: "scene", lights: [] });
+    expect(scene.bloom).toEqual(createDefaultSceneBloom());
+    expect(scene.bloom).toMatchObject({
+      enabled: true,
+      threshold: 1,
+      intensity: 4,
+      exposure: 0,
+      scatter: 0.7,
+    });
+  });
+
+  it("clamps and round-trips authored bloom", () => {
+    const scene = normalizeSceneDefinition({
+      kind: "scene",
+      bloom: {
+        enabled: false,
+        threshold: 42,
+        intensity: -1,
+        exposure: 9,
+        scatter: 0.25,
+        highQualityFiltering: true,
+        downscale: "half",
+      },
+    });
+    expect(scene.bloom).toEqual({
+      enabled: false,
+      threshold: 10,
+      intensity: 0,
+      exposure: 2,
+      scatter: 0.25,
+      highQualityFiltering: true,
+      downscale: "half",
+    });
+    expect(parseSceneDefinition(serializeSceneDefinition(scene)).bloom).toEqual(
+      scene.bloom,
+    );
   });
 });
