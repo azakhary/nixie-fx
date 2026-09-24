@@ -119,13 +119,26 @@ describe("Three graph texture sampling", () => {
         if (/^uTex\d+$/.test(name)) expect(uniform.value).toBe(sampled);
       }
       expect(source.colorSpace).toBe(SRGBColorSpace);
-      expect(resolution.ownedTextures).toEqual([sampled]);
-      let sourceDisposed = false;
-      source.addEventListener("dispose", () => {
-        sourceDisposed = true;
+      // The raw view is shared per source, not owned by the emitter view, so
+      // respawning the effect reuses it instead of re-uploading the image.
+      expect(resolution.ownedTextures).toEqual([]);
+      const sourceVersion = source.source.version;
+      const respawned = createThreeEmitterMaterial(effect.emitters[0]!, {
+        effect,
+        camera: new PerspectiveCamera(),
+        textureProvider: { getTexture: () => source },
+        materialGraphProvider: () => graph,
       });
-      resolution.ownedTextures.forEach((texture) => texture.dispose());
-      expect(sourceDisposed).toBe(false);
+      expect(
+        (respawned.material as ShaderMaterial).uniforms.uTexture!.value,
+      ).toBe(sampled);
+      expect(source.source.version).toBe(sourceVersion);
+      let viewDisposed = false;
+      sampled.addEventListener("dispose", () => {
+        viewDisposed = true;
+      });
+      source.dispose();
+      expect(viewDisposed).toBe(true);
     },
   );
 

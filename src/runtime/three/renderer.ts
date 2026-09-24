@@ -93,6 +93,7 @@ import {
   selectThreeTextureFrameIndex,
   type ThreeTextureFrameSet,
 } from "./textureFrames";
+import { cloneShaderMaterialSharingTextures } from "./textureViews";
 import { reverseGeometryWinding } from "./geometryWinding";
 import {
   encodePreviewBloomHdrColor,
@@ -1461,7 +1462,13 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   private acquireMesh(view: ThreeEmitterView, index: number): Mesh {
     let mesh = view.meshes[index];
     if (mesh) return mesh;
-    mesh = new Mesh(view.geometry, view.material.clone());
+    // Share textures with the view material: a plain ShaderMaterial.clone()
+    // deep-clones them and every new particle re-uploaded its textures.
+    const material =
+      view.material instanceof ShaderMaterial
+        ? cloneShaderMaterialSharingTextures(view.material)
+        : view.material.clone();
+    mesh = new Mesh(view.geometry, material);
     mesh.frustumCulled = false;
     view.meshes[index] = mesh;
     this.root.add(mesh);

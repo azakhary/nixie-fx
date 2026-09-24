@@ -8,7 +8,6 @@ import {
   MeshStandardMaterial,
   ShaderMaterial,
   NoBlending,
-  NoColorSpace,
   NormalBlending,
   Vector2,
   Vector4,
@@ -44,6 +43,7 @@ import {
   getProceduralBillboardTexture,
   proceduralBillboardTextureKey,
 } from "./proceduralBillboardTexture";
+import { rawColorSpaceTextureView } from "./textureViews";
 import type { ThreeVfxEffectInstanceOptions } from "./types";
 
 export interface ThreeEmitterMaterialResolution {
@@ -374,18 +374,10 @@ function createThreeShaderMaterial(
   // Graph math uses raw texel channels, just like the material preview. An
   // sRGB upload would decode RGB before nodes such as Smoothstep see it.
   // Keep provider textures unchanged: fixed-function materials still need
-  // their color-space annotation. Reuse one owned view per source texture.
-  const graphTextures = new Map<Texture, Texture>();
-  const graphTexture = (source: Texture | null): Texture | null => {
-    if (!source || source.colorSpace === NoColorSpace) return source;
-    const cached = graphTextures.get(source);
-    if (cached) return cached;
-    const texture = source.clone();
-    texture.colorSpace = NoColorSpace;
-    texture.needsUpdate = true;
-    graphTextures.set(source, texture);
-    return texture;
-  };
+  // their color-space annotation. The raw view is shared per source texture
+  // across views and effect instances, so respawns never re-upload it.
+  const graphTexture = (source: Texture | null): Texture | null =>
+    source ? rawColorSpaceTextureView(source) : null;
   const samplerUniforms: Record<string, { value: Texture | null }> = {};
   for (const sampler of compiled.samplers) {
     samplerUniforms[sampler.uniform] = {
@@ -442,7 +434,7 @@ function createThreeShaderMaterial(
     premultipliedAlpha: effectiveBlend === "premultiplied",
     side: threeSideForGraph(graph),
   });
-  return { material, ownedTextures: [...graphTextures.values()] };
+  return { material, ownedTextures: [] };
 }
 
 function threeSideForGraph(graph: ShaderGraph | undefined): Side {

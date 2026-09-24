@@ -7,6 +7,7 @@ import {
 import type { ParticleEmitterDefinition } from "../../engine/particles";
 import type { MaterialFixedDescriptor } from "../materials/artifact";
 import { sampleTextureSheetAnimationFrame } from "../modules";
+import { cloneTextureView } from "./textureViews";
 
 interface ThreeTextureFrame {
   texture: Texture | null;
@@ -179,8 +180,7 @@ function createTextureFrame(
     repeatY: number;
   },
 ): ThreeTextureFrame {
-  const frameTexture = clone && texture ? texture.clone() : texture;
-  if (clone && frameTexture) frameTexture.needsUpdate = true;
+  const frameTexture = clone && texture ? cloneTextureView(texture) : texture;
   return {
     texture: frameTexture,
     offsetX: overrides?.offsetX ?? frameTexture?.offset.x ?? 0,
