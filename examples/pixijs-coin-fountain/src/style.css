@@ -1,0 +1,90 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: radial-gradient(circle at 50% 70%, #2a1f3d 0%, #0d0b14 70%);
+  color: #f4efe6;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+#app canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.reward {
+  position: absolute;
+  left: 50%;
+  bottom: 18%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 18px 28px 22px;
+  border-radius: 18px;
+  background: rgba(20, 16, 30, 0.85);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+
+.reward-title {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #b9a7d8;
+}
+
+.reward-amount {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+#claim {
+  margin-top: 6px;
+  padding: 10px 26px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  color: #2b1b00;
+  background: linear-gradient(#ffd66b, #f0a92e);
+  cursor: pointer;
+}
+
+#claim:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.hud {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #9d93b3;
+  font-variant-numeric: tabular-nums;
+}
+
+#status[data-error="true"] {
+  color: #ff8a7a;
+}

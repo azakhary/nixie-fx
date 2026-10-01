@@ -1,0 +1,17 @@
+{
+  "app": "vfx-editor",
+  "kind": "project",
+  "version": 1,
+  "id": "vfx-pixijs-coin-fountain-example",
+  "name": "PixiJS reward coin fountain",
+  "settings": {
+    "effectDataPath": "effects",
+    "outputPath": "public/vfx",
+    "assetRootPath": "assets",
+    "materialsFolder": "materials",
+    "allowExternalOutput": false,
+    "lastEffectFile": "coin-fountain.json"
+  },
+  "createdAt": "2026-10-01T00:00:00.000Z",
+  "updatedAt": "2026-10-01T00:00:00.000Z"
+}

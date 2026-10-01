@@ -192,6 +192,9 @@ colors are sRGB hex). Their `props` list is editor-only stand-in geometry.
   standalone runtime integration. [Open in CodeSandbox](https://codesandbox.io/p/sandbox/y3z3sf).
 - [PixiJS v8 opening engine](./examples/pixijs) — a responsive 2D integration
   driven by Pixi's ticker. [Open in CodeSandbox](https://codesandbox.io/p/sandbox/ny2r5y).
+- [PixiJS v8 reward coin fountain](./examples/pixijs-coin-fountain) — a textured
+  one-shot UI effect restarted from a button, with tests for the export,
+  determinism, particle budget and completion.
 
 ## Simulation space
 
