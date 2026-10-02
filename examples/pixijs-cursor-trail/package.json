@@ -1,0 +1,26 @@
+{
+  "name": "nixie-fx-pixijs-cursor-trail-example",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "start": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --test tests/*.test.mjs",
+    "vfx:validate": "nixie-fx validate .",
+    "vfx:export": "nixie-fx export . && nixie-fx export-status ."
+  },
+  "dependencies": {
+    "nixie-fx": "0.1.17",
+    "pixi.js": "8.19.0"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3",
+    "vite": "7.3.6"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}
