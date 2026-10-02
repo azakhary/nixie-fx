@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Card reveal glow · PixiJS + NixieFX</title>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">N-203 · PixiJS 8 + NixieFX</p>
+      <h1>Card reveal glow</h1>
+      <p>
+        Reveal the card to play a short particle cue around its border. The card
+        state remains clear when motion is reduced.
+      </p>
+      <section id="stage" aria-label="Card reveal demo">
+        <button
+          id="card"
+          type="button"
+          aria-label="Reveal Aurora card"
+          aria-pressed="false"
+        >
+          <span class="card-back" aria-hidden="true"
+            ><img src="/card-sigil.svg" alt="" /><small
+              >Tap to reveal</small
+            ></span
+          >
+          <span class="card-front" aria-hidden="true"
+            ><span class="rarity">Rare · sky</span><strong>Aurora</strong
+            ><span class="art">✧</span
+            ><small>Restores light to the northern gate</small></span
+          >
+        </button>
+      </section>
+      <p id="status" role="status">Loading effect…</p>
+      <p class="note">
+        The card is a normal keyboard-accessible button. The CSS reveal and
+        static border still work when reduced motion is enabled; PixiJS renders
+        the NixieFX particles.
+      </p>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
