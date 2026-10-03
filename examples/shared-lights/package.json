@@ -1,0 +1,18 @@
+{
+  "name": "nixie-fx-shared-light-review",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 8082 --strictPort",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "nixie-fx": "0.1.17",
+    "three": "0.184.0"
+  },
+  "devDependencies": {
+    "vite": "^6.2.0",
+    "@types/three": "0.184.1",
+    "typescript": "~5.7.3"
+  }
+}

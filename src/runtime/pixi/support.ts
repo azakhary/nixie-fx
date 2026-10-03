@@ -128,6 +128,17 @@ export function collectPixiVfxUnsupportedFeatures(
 ): PixiVfxUnsupportedFeature[] {
   const unsupported: PixiVfxUnsupportedFeature[] = [];
   effect.emitters.forEach((emitter, emitterIndex) => {
+    if (emitter.lightEmission && emitter.lightEmission.mode !== "disabled") {
+      unsupported.push({
+        emitterId: emitter.id,
+        emitterIndex,
+        featureKey: "lightEmission",
+        path: `emitters.${emitterIndex}.lightEmission`,
+        reason:
+          "Real scene illumination is Three-only. Pixi ignores Light Emission; legacy Lights tint is preserved.",
+      });
+    }
+
     // Mesh mode renders as 2D shard geometry, not a true 3D mesh, so it is an
     // approximate per-effect feature (default mode is `billboard`).
     if (emitter.mode === "mesh" && emitter.mesh.renderMode === "meshAsset") {

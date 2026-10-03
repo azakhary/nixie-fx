@@ -402,6 +402,41 @@ export interface ParticleColorSettings {
   gradient: ParticleColorGradientSettings;
 }
 
+/** Explicit opt-in. Missing/unknown versions never turn legacy tint lights into scene lights. */
+export interface ParticleLightEmissionSettings {
+  version: 1;
+  mode: "disabled" | "emitter" | "particles";
+  color: ParticleColorGradientSettings;
+  intensity: ParticleScalarValue;
+  radius: ParticleScalarValue;
+  /** Artistic candidate limit, independent of the host device budget. Null means all. */
+  maxLights: number | null;
+}
+
+export function normalizeParticleLightEmission(
+  value: unknown,
+): ParticleLightEmissionSettings {
+  const source = isRecord(value) && value.version === 1 ? value : {};
+  return {
+    version: 1,
+    mode:
+      source.mode === "emitter" || source.mode === "particles"
+        ? source.mode
+        : "disabled",
+    color: normalizeParticleGradient(
+      source.color,
+      [1, 0.45, 0.08, 1],
+      [1, 0.08, 0.01, 0],
+    ),
+    intensity: normalizeParticleScalarValue(source.intensity, 8, 0, 10000),
+    radius: normalizeParticleScalarValue(source.radius, 3, 0.001, 10000),
+    maxLights:
+      typeof source.maxLights === "number" && Number.isFinite(source.maxLights)
+        ? Math.max(0, Math.min(4096, Math.floor(source.maxLights)))
+        : null,
+  };
+}
+
 export interface ParticleEmitterDefinition {
   id: string;
   name: string;
@@ -422,6 +457,7 @@ export interface ParticleEmitterDefinition {
   /** Color OVER LIFETIME multiplier gradient (composes over init color). */
   color: ParticleColorSettings;
   advanced: ParticleAdvancedModuleSettings;
+  lightEmission?: ParticleLightEmissionSettings;
 }
 
 export interface ParticleEffectDefinition {
@@ -1216,6 +1252,9 @@ function normalizeEmitter(
     loop: source.loop !== false,
     timeline: normalizeEmitterTimeline(source.timeline),
     modules: normalizeEmitterModules(source.modules, FULL_EMITTER_MODULES),
+    ...(isRecord(source.lightEmission) && source.lightEmission.version === 1
+      ? { lightEmission: normalizeParticleLightEmission(source.lightEmission) }
+      : {}),
     spawn,
     initializeParticle: normalizeParticleInitializeSettings(
       source.initializeParticle,
@@ -2684,6 +2723,8 @@ class ParticleRng {
 
 export class ParticleEmitterRuntimeState {
   readonly instanceData: Float32Array;
+  readonly particleIds: Float64Array;
+  private nextParticleId = 0;
   readonly spawnLocalPositionData: Float32Array;
   readonly spawnDirectionData: Float32Array;
   readonly spawnOriginData: Float32Array;
@@ -2705,6 +2746,7 @@ export class ParticleEmitterRuntimeState {
 
   constructor(readonly capacity: number) {
     this.instanceData = new Float32Array(capacity * PARTICLE_INSTANCE_STRIDE);
+    this.particleIds = new Float64Array(capacity);
     this.spawnLocalPositionData = new Float32Array(
       capacity * PARTICLE_RUNTIME_VECTOR_STRIDE,
     );
@@ -2719,6 +2761,7 @@ export class ParticleEmitterRuntimeState {
   }
 
   reset(): void {
+    this.nextParticleId = 0;
     this.activeCount = 0;
     this.emittedLastFrame = 0;
     this.uploadBytesLastFrame = 0;
@@ -2761,6 +2804,8 @@ export class ParticleEmitterRuntimeState {
     );
     next.runtimeFlagsData.set(this.runtimeFlagsData.subarray(0, activeCount));
     next.triggerFlagsData.set(this.triggerFlagsData.subarray(0, activeCount));
+    next.particleIds.set(this.particleIds.subarray(0, activeCount));
+    next.nextParticleId = this.nextParticleId;
     next.activeCount = activeCount;
     next.emittedLastFrame = this.emittedLastFrame;
     next.uploadBytesLastFrame = this.uploadBytesLastFrame;
@@ -2807,7 +2852,12 @@ export class ParticleEmitterRuntimeState {
     }
   }
 
+  assignParticleId(index: number): void {
+    this.particleIds[index] = ++this.nextParticleId;
+  }
+
   private copyRuntimeSidecars(fromIndex: number, toIndex: number): void {
+    this.particleIds[toIndex] = this.particleIds[fromIndex]!;
     const from = fromIndex * PARTICLE_RUNTIME_VECTOR_STRIDE;
     const to = toIndex * PARTICLE_RUNTIME_VECTOR_STRIDE;
     this.spawnLocalPositionData[to + 0] = this.spawnLocalPositionData[from + 0];
@@ -3620,6 +3670,7 @@ export class ParticleEffectRunner {
       state.instanceData[slot + 12] = initSize;
       state.instanceData[slot + 17] = initSize;
     }
+    state.assignParticleId(particleIndex);
     state.activeCount++;
     this.recordParticleBirthEvent(
       emitter,

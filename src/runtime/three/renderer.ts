@@ -1,3 +1,8 @@
+import {
+  createVfxLightInstanceId,
+  evaluateVfxLight,
+  type VfxLightCandidate,
+} from "../lights/candidates";
 import { sampleIndependentTrailColor } from "../trailColor";
 import {
   PARTICLE_ALIGNMENT_AXIS,
@@ -221,6 +226,38 @@ interface ThreeEmitterDrawResult {
 
 export class ThreeVfxEffectInstance implements VfxEffectInstance {
   readonly root = new Group();
+  lightRevision = 0;
+  private readonly lightInstanceId = createVfxLightInstanceId();
+  private readonly lightCandidates: VfxLightCandidate[] = [];
+  private readonly worldLightCandidates: VfxLightCandidate[] = [];
+  private lightParticleCutoff = Infinity;
+  private lightStartedAt = 0;
+  get lightsPaused(): boolean {
+    return this.paused;
+  }
+  getLightCandidates(): readonly VfxLightCandidate[] {
+    this.worldLightCandidates.length = 0;
+    if (this.destroyed || !this.visible || !this.root.parent)
+      return this.worldLightCandidates;
+    let attachedToScene = false;
+    for (let node: Object3D | null = this.root; node; node = node.parent) {
+      if (!node.visible) return this.worldLightCandidates;
+      if ((node as Scene).isScene) attachedToScene = true;
+    }
+    if (!attachedToScene) return this.worldLightCandidates;
+    this.root.updateWorldMatrix(true, false);
+    for (const candidate of this.lightCandidates) {
+      this.scratchWorld
+        .fromArray(candidate.position)
+        .applyMatrix4(this.root.matrixWorld);
+      this.worldLightCandidates.push({
+        ...candidate,
+        position: this.scratchWorld.toArray(),
+      });
+    }
+    return this.worldLightCandidates;
+  }
+
   readonly stats: ThreeVfxEffectStats = createEmptyEffectStats();
 
   private effect: ParticleEffectDefinition;
@@ -363,6 +400,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     if (this.destroyed) return;
     this.paused = false;
     if (!this.runner.isActive) {
+      this.lightStartedAt = this.timeSeconds;
       this.runner.reset(
         this.effect,
         this.position,
@@ -380,6 +418,8 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   }
 
   stop(): void {
+    this.lightCandidates.length = 0;
+    this.lightRevision++;
     this.runner.stop();
     this.clearViews();
     this.syncStats(0, 0, 0, 0, 0);
@@ -407,8 +447,10 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
 
   seek(timeSeconds: number): void {
     if (this.destroyed) return;
+    this.lightRevision++;
     const target = Math.max(0, Number.isFinite(timeSeconds) ? timeSeconds : 0);
     this.timeSeconds = 0;
+    this.lightStartedAt = 0;
     this.runner.reset(this.effect, this.position, 0, this.seed);
     let cursor = 0;
     while (cursor < target) {
@@ -619,6 +661,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   setVisible(visible: boolean): void {
     this.visible = visible;
     this.root.visible = visible;
+    this.lightRevision++;
   }
 
   setCamera(camera: Camera): void {
@@ -651,6 +694,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     options: { preserveViews?: boolean } = {},
   ): ParticleEffectDefinition {
     this.effect = normalizeThreeVfxEffect(effect);
+    this.lightRevision++;
     this.runner.updateDefinition(this.effect);
     // Re-resolve emission sources: the edited definition may have switched an
     // emitter's spawn shape or its emission mesh asset.
@@ -678,6 +722,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   }
 
   private draw(timeSeconds: number): void {
+    this.lightCandidates.length = 0;
     if (!this.visible) return;
     this.ensureViews();
     this.debugTransforms.length = 0;
@@ -706,6 +751,33 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
           view.trailMesh.removeFromParent();
         }
         continue;
+      }
+      const light = emitter.lightEmission;
+      this.lightParticleCutoff = Infinity;
+      if (light?.mode === "particles" && light.maxLights !== null) {
+        const ids = Array.from(
+          state.particleIds.subarray(0, state.activeCount),
+        ).sort((a, b) => a - b);
+        this.lightParticleCutoff =
+          light.maxLights > 0 ? (ids[light.maxLights - 1] ?? Infinity) : -1;
+      }
+      if (
+        light?.mode === "emitter" &&
+        timeSeconds - this.lightStartedAt >= emitter.timeline.start &&
+        state.age >= 0 &&
+        (emitter.loop || state.age <= emitter.duration) &&
+        this.runner.isActive
+      ) {
+        const loopAge = Math.min(1, Math.max(0, state.age / emitter.duration));
+        const candidate = evaluateVfxLight(
+          light,
+          `${this.lightInstanceId}/${emitter.id}/origin`,
+          emitter.spawn.position,
+          loopAge,
+          loopAge,
+          state.loopRandom,
+        );
+        if (candidate) this.lightCandidates.push(candidate);
       }
       const drawResult = this.drawEmitter(
         view,
@@ -805,6 +877,25 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
         view.materialFixed,
         view.materialParticleColorUsage,
       );
+      if (
+        sample &&
+        emitter.lightEmission?.mode === "particles" &&
+        state.particleIds[particleIndex]! <= this.lightParticleCutoff
+      ) {
+        const candidate = evaluateVfxLight(
+          emitter.lightEmission,
+          `${this.lightInstanceId}/${emitter.id}/${state.particleIds[particleIndex]}`,
+          [
+            sample.position[0] - this.position[0],
+            sample.position[1] - this.position[1],
+            sample.position[2] - this.position[2],
+          ],
+          sample.normalizedAge,
+          sample.loopAge,
+          sample.seed,
+        );
+        if (candidate) this.lightCandidates.push(candidate);
+      }
       if (!sample?.visible) continue;
       if (view.instanced) {
         const distanceSquared = this.applySampleToInstanced(
