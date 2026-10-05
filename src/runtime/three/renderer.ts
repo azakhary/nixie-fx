@@ -208,6 +208,7 @@ interface ParticleSample {
   rotation: Vec3;
   color: Color;
   shaderColor: Vec3;
+  lightColor: [number, number, number, number];
   trailColor: [number, number, number, number];
   alpha: number;
   alignmentAxis: Vector3;
@@ -358,6 +359,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     rotation: [0, 0, 0],
     color: new Color(),
     shaderColor: [1, 1, 1],
+    lightColor: [1, 1, 1, 1],
     trailColor: [1, 1, 1, 1],
     alpha: 1,
     alignmentAxis: new Vector3(),
@@ -754,7 +756,11 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       }
       const light = emitter.lightEmission;
       this.lightParticleCutoff = Infinity;
-      if (light?.mode === "particles" && light.maxLights !== null) {
+      if (
+        light?.enabled !== false &&
+        light?.mode === "particles" &&
+        light.maxLights !== null
+      ) {
         const ids = Array.from(
           state.particleIds.subarray(0, state.activeCount),
         ).sort((a, b) => a - b);
@@ -762,6 +768,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
           light.maxLights > 0 ? (ids[light.maxLights - 1] ?? Infinity) : -1;
       }
       if (
+        light?.enabled !== false &&
         light?.mode === "emitter" &&
         timeSeconds - this.lightStartedAt >= emitter.timeline.start &&
         state.age >= 0 &&
@@ -879,6 +886,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       );
       if (
         sample &&
+        emitter.lightEmission?.enabled !== false &&
         emitter.lightEmission?.mode === "particles" &&
         state.particleIds[particleIndex]! <= this.lightParticleCutoff
       ) {
@@ -893,6 +901,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
           sample.normalizedAge,
           sample.loopAge,
           sample.seed,
+          sample.lightColor,
         );
         if (candidate) this.lightCandidates.push(candidate);
       }
@@ -1205,6 +1214,11 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       (localSpace && emitter.render.alignAxis === "screen"
         ? (emitter.spawn.rotation[2] * Math.PI) / 180
         : 0);
+    // Authored particle color, independent of preview exposure/bloom and shader output.
+    sample.lightColor[0] = initColor[0] * intensity * overLife[0];
+    sample.lightColor[1] = initColor[1] * intensity * overLife[1];
+    sample.lightColor[2] = initColor[2] * intensity * overLife[2];
+    sample.lightColor[3] = initColor[3] * overLife[3];
     sample.color.copy(color);
     sample.shaderColor[0] = renderColor[0];
     sample.shaderColor[1] = renderColor[1];

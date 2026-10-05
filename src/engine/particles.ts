@@ -405,6 +405,10 @@ export interface ParticleColorSettings {
 /** Explicit opt-in. Missing/unknown versions never turn legacy tint lights into scene lights. */
 export interface ParticleLightEmissionSettings {
   version: 1;
+  /** Missing preserves the original mode-based opt-in. */
+  enabled?: boolean;
+  /** Follow-particle mode can inherit evaluated particle RGB and opacity. */
+  useParticleColor?: boolean;
   mode: "disabled" | "emitter" | "particles";
   color: ParticleColorGradientSettings;
   intensity: ParticleScalarValue;
@@ -419,6 +423,10 @@ export function normalizeParticleLightEmission(
   const source = isRecord(value) && value.version === 1 ? value : {};
   return {
     version: 1,
+    enabled:
+      source.enabled !== false &&
+      (source.mode === "emitter" || source.mode === "particles"),
+    useParticleColor: source.useParticleColor === true,
     mode:
       source.mode === "emitter" || source.mode === "particles"
         ? source.mode

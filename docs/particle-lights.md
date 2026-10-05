@@ -7,13 +7,27 @@ compiler/loader. Missing or unknown versions emit no scene lights. Existing
 the new feature never enables, rewrites or replaces that legacy tint. Pixi
 ignores real light emission and returns an explicit unsupported-feature report.
 
-Modes are `disabled`, `emitter` (one origin light during the emitter's emission
+`enabled: false` disables emission while preserving the selected mode and all
+authored settings. Missing `enabled` retains the original mode-based opt-in.
+The editor uses its standard module-header checkbox; the legacy `disabled`
+mode remains readable for existing files. Modes are `disabled`, `emitter`
+(one origin light during the emitter's emission
 window), and `particles` (live particles). Emitter mode samples the gradient
 and lifetime curves at clamped emitter loop age (after start delay, repeating
 for looping emitters, ending at duration for one-shots). Particle mode samples
 at normalized particle age; scalar curves set to Loop Age use the current
 emitter loop age. Normal random scalar modes use the stable particle seed or
-emitter loop seed. Gradient alpha multiplies intensity. Non-finite positions,
+emitter loop seed. Gradient alpha multiplies intensity.
+
+In `particles` mode, `useParticleColor: true` replaces the light gradient with
+each particle's evaluated initial color/intensity and color-over-lifetime/module
+color, including opacity. Particle opacity multiplies the light intensity curve.
+Preview exposure, bloom and custom shader/material output do not change this
+inherited authored color. The custom light gradient is retained when this option
+is enabled and restored when disabled. Emitter-origin mode always uses its own
+light gradient; it has no individual particle to inherit from.
+
+Non-finite positions,
 colors, intensity or radius, non-positive radius and non-positive intensity
 produce no candidate. `maxLights: null` allows every live candidate; a finite
 maximum selects the oldest still-live particle IDs, with replacements only

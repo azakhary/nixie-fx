@@ -128,7 +128,11 @@ export function collectPixiVfxUnsupportedFeatures(
 ): PixiVfxUnsupportedFeature[] {
   const unsupported: PixiVfxUnsupportedFeature[] = [];
   effect.emitters.forEach((emitter, emitterIndex) => {
-    if (emitter.lightEmission && emitter.lightEmission.mode !== "disabled") {
+    if (
+      emitter.lightEmission &&
+      emitter.lightEmission.enabled !== false &&
+      emitter.lightEmission.mode !== "disabled"
+    ) {
       unsupported.push({
         emitterId: emitter.id,
         emitterIndex,

@@ -42,6 +42,80 @@ const effect = (mode = "particles", space = "local") =>
   });
 
 describe("shared particle lights", () => {
+  it("preserves a disabled module's mode and particle-color setting through export", () => {
+    const authored = effect();
+    Object.assign(authored.emitters[0]!.lightEmission!, {
+      enabled: false,
+      useParticleColor: true,
+    });
+    const light = compileVfxEffect(authored).effect.emitters[0]!.lightEmission!;
+    expect(light).toMatchObject({
+      enabled: false,
+      mode: "particles",
+      useParticleColor: true,
+    });
+    expect(
+      evaluateVfxLight(
+        normalizeParticleLightEmission(light),
+        "p",
+        [0, 0, 0],
+        0,
+        0,
+        0,
+      ),
+    ).toBeNull();
+    expect(
+      normalizeParticleLightEmission({ version: 1, mode: "disabled" }).enabled,
+    ).toBe(false);
+    expect(
+      normalizeParticleLightEmission({ version: 1, mode: "particles" }).enabled,
+    ).toBe(true);
+  });
+  it("inherits particle RGB and opacity without multiplying the custom light gradient", () => {
+    const light = normalizeParticleLightEmission({
+      version: 1,
+      mode: "particles",
+      useParticleColor: true,
+      intensity: { mode: "constant", value: 8 },
+    });
+    const result = evaluateVfxLight(
+      light,
+      "p",
+      [0, 0, 0],
+      0.5,
+      0,
+      0,
+      [0.2, 0.7, 0.4, 0.25],
+    )!;
+    expect(result.color).toEqual([0.2, 0.7, 0.4]);
+    expect(result.intensity).toBe(2);
+    expect(
+      evaluateVfxLight(light, "p", [0, 0, 0], 0, 0, 0, [1, 1, 1, 0]),
+    ).toBeNull();
+  });
+  it("evaluates inherited particle color during the normal Three update", () => {
+    const scene = new Scene();
+    const renderer = new ThreeVfxRenderer({
+      scene,
+      camera: new PerspectiveCamera(),
+    });
+    const authored = effect();
+    const emitter = authored.emitters[0]!;
+    emitter.lightEmission!.useParticleColor = true;
+    emitter.initializeParticle.color.color = [0, 1, 0, 1];
+    const instance = renderer.createEffect(authored);
+    renderer.update(0.2);
+    const lights = instance.getLightCandidates();
+    expect(lights.length).toBeGreaterThan(0);
+    expect(lights[0]!.color[0]).toBe(0);
+    expect(lights[0]!.color[1]).toBeGreaterThan(0);
+    expect(lights[0]!.color[2]).toBe(0);
+    emitter.lightEmission!.enabled = false;
+    instance.updateDefinition(authored);
+    renderer.update(0.1);
+    expect(instance.getLightCandidates()).toHaveLength(0);
+    renderer.destroy();
+  });
   it("keeps legacy tint opt-in separate and round-trips through normal export", () => {
     const legacy = normalizeParticleEffect({
       emitters: [{ modules: { lights: true } }],

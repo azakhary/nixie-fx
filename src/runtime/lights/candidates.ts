@@ -33,17 +33,27 @@ export function evaluateVfxLight(
   age: number,
   loopAge: number,
   seed: number,
+  particleColor?: readonly [number, number, number, number],
 ): VfxLightCandidate | null {
   if (
     settings.version !== 1 ||
+    settings.enabled === false ||
     settings.mode === "disabled" ||
     settings.maxLights === 0
   )
     return null;
-  const color = sampleParticleGradientColor(settings.color, age);
+  const inherited =
+    settings.useParticleColor && settings.mode === "particles"
+      ? particleColor
+      : undefined;
+  const color: Vec3 = inherited
+    ? [inherited[0], inherited[1], inherited[2]]
+    : sampleParticleGradientColor(settings.color, age);
   const intensity =
     sampleParticleScalarValue(settings.intensity, age, seed, loopAge) *
-    sampleParticleGradientAlpha(settings.color, age);
+    (inherited
+      ? inherited[3]
+      : sampleParticleGradientAlpha(settings.color, age));
   const radius = sampleParticleScalarValue(settings.radius, age, seed, loopAge);
   if (
     !Number.isFinite(intensity) ||
