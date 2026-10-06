@@ -1,7 +1,7 @@
 import type { Vec4 } from "../../engine/math";
 import type { MaterialNode, ShaderGraph } from "../schema/materials";
 
-/** Color conversion leaves alpha and values above one intact. */
+/** Color conversion preserves alpha and does not clamp HDR values. */
 export function materialColorToLinear(value: Vec4): Vec4 {
   const convert = (v: number) =>
     v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;

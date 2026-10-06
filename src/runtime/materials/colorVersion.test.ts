@@ -57,6 +57,25 @@ describe("versioned material colors", () => {
     );
     expect(source).toContain("linearToOutputTexel(value)");
   });
+  it("keeps fallback texture alpha in the transparent pass", () => {
+    const g = graph("textureSample");
+    expect(
+      compileMaterial(g, createMaterialInstance(g, "test"))
+        .opacityIsConstantOne,
+    ).toBe(false);
+    delete g.colorVersion;
+    expect(
+      compileMaterial(g, createMaterialInstance(g, "test"))
+        .opacityIsConstantOne,
+    ).toBe(true);
+  });
+  it("detects particle color used only by a lit input", () => {
+    const g = graph();
+    g.shadingModel = "lit";
+    g.edges[0]!.targetHandle = "roughness";
+    g.outputs = { roughness: "base" };
+    expect(fragment(g)).not.toContain("outColor *=");
+  });
   it("keeps implicit particle modulation when the graph does not read it", () => {
     expect(fragment(graph("textureSample"))).toContain(
       "outColor *= materialSrgbToLinear(vColor);",

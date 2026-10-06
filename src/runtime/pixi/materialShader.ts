@@ -96,7 +96,7 @@ export function createTier2ParticleMaterialShader({
   if (!compiled) return null;
   const fragment =
     graph.colorVersion === 1
-      ? `#define PREMULTIPLIED_ALPHA\n${compiled.fragment}`
+      ? `#define PREMULTIPLIED_ALPHA\n#define uTexture uGraphTexture\n${compiled.fragment}`
       : compiled.fragment;
   const fixed = artifact.fixed ?? defaultFixed(graph.blend);
   const tiles: [number, number] = [
@@ -126,6 +126,9 @@ export function createTier2ParticleMaterialShader({
     },
     resources: {
       uTexture: mainSource,
+      // Pixi rebinds uTexture from the container on every draw. Keep the raw
+      // graph sampler separate so that upload premultiplication cannot leak in.
+      ...(graph.colorVersion === 1 ? { uGraphTexture: mainSource } : {}),
       uSampler: mainSource.style,
       ...perNodeSamplers,
       uniforms: {

@@ -297,6 +297,10 @@ float materialTwoSidedSign() {
           : "materialSampleMain(vUV).a");
     const maskExpr = opacityMask ?? "vec4(1.0)";
     const emissiveScale = fixed ? "uFixedEmissive" : "0.0";
+    // Resolve lit inputs before deciding whether particle modulation is implicit.
+    // Keep legacy evaluation order and emitted source unchanged.
+    const modernSurface =
+      this.graph.colorVersion === 1 ? this.surfaceColorLine() : null;
 
     // Opaque ignores opacity/opacityMask entirely: no discard, alpha forced to
     // 1 in the output encode (I12-G).
@@ -306,7 +310,7 @@ void main(void) {
   vec4 baseColor = ${baseExpr};
   vec4 emissiveColor = ${emissiveExpr};
   vec4 outColor = baseColor;
-  ${this.surfaceColorLine()}
+  ${modernSurface ?? this.surfaceColorLine()}
   outColor.rgb *= (1.0 + max(0.0, ${emissiveScale}));
   ${this.particleMultiply()}
   outColor.a = 1.0;
@@ -341,7 +345,7 @@ void main(void) {
   float maskValue = ${maskValueExpr};
   if (maskValue < uClipValue) discard;
   vec4 outColor = baseColor;
-  ${this.surfaceColorLine()}
+  ${modernSurface ?? this.surfaceColorLine()}
   outColor.rgb *= (1.0 + max(0.0, ${emissiveScale}));
   ${alphaEncode}
   ${this.outputLine()}

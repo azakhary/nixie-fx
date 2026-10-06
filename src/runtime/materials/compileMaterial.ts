@@ -320,10 +320,12 @@ export function analyzeOpacityIsConstantOne(
   index: GraphIndex = indexGraph(graph),
 ): boolean {
   const edgeId = graph.outputs.opacity;
-  if (!edgeId) return true;
+  // Modern graphs fall back to base-color/texture alpha when opacity is unwired.
+  // That alpha is not provably one, even if the particle itself is opaque.
+  if (!edgeId) return graph.colorVersion !== 1;
   const edge = index.edgeById.get(edgeId);
   const source = edge ? index.nodeById.get(edge.source) : undefined;
-  if (!edge || !source) return true; // dangling wiring renders as unwired
+  if (!edge || !source) return graph.colorVersion !== 1; // unwired fallback
   if (source.type !== "constant") return false;
   const value = source.params.value;
   const channel = OPACITY_HANDLE_CHANNEL[edge.sourceHandle] ?? 0;
