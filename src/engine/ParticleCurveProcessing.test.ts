@@ -3,6 +3,7 @@ import {
   prepareParticleCurve,
   sampleParticleCurve,
   samplePreparedParticleCurve,
+  samplePreparedParticleCurveSegment,
 } from "./ParticleCurve";
 import { integrateParticleCurve } from "./ParticleCurveIntegral";
 import { integrateParticleScalarValue } from "./ParticleScalarSampling";
@@ -131,6 +132,61 @@ describe("prepared particle curves", () => {
           samplePreparedParticleCurve(prepared, t),
         );
       }
+    }
+  });
+
+  it("keeps every authored point on long curves", () => {
+    const count = 40;
+    const curve = Array.from({ length: count }, (_, i) => ({
+      x: i / (count - 1),
+      y: Math.sin(i * 0.7) * 3,
+      ...(i % 3 === 0 ? { slopeOut: 2, weightOut: 0.2 } : {}),
+    }));
+    const value = normalizeParticleScalarValue(
+      { mode: "curve", curve: [...curve].reverse() },
+      1,
+      -5,
+      5,
+    );
+    expect(value.curve).toHaveLength(count);
+    expect(value.curve.map((point) => point.x)).toEqual(
+      curve.map((point) => point.x),
+    );
+    const multiplier = value.multiplier ?? 1;
+    value.curve.forEach((point, i) =>
+      expect(point.y * multiplier).toBeCloseTo(curve[i]!.y, 9),
+    );
+  });
+
+  it("finds the same segment on long curves as a linear scan", () => {
+    const curve: ParticleCurvePoint[] = [
+      ...Array.from({ length: 30 }, (_, i) => ({
+        x: i / 40,
+        y: (i % 5) - 2,
+      })),
+      // Coincident keys form a zero-width segment; the first match must win.
+      { x: 0.75, y: 9 },
+      ...Array.from({ length: 10 }, (_, i) => ({
+        x: 0.775 + (i * 0.225) / 9,
+        y: i * 0.5,
+      })),
+    ];
+    const prepared = prepareParticleCurve(curve);
+    expect(prepared.segments.length).toBeGreaterThan(8);
+    for (let i = 0; i <= 2000; i++) {
+      const t = i / 2000;
+      let expected = prepared.lastY;
+      if (t <= 0) expected = prepared.firstY;
+      else if (t < 1) {
+        const segment = prepared.segments.find((s) => t <= s.end);
+        if (segment) expected = samplePreparedParticleCurveSegment(segment, t);
+      }
+      expect(samplePreparedParticleCurve(prepared, t)).toBe(expected);
+    }
+    for (const point of curve) {
+      expect(sampleParticleCurve(curve, point.x)).toBe(
+        samplePreparedParticleCurve(prepared, point.x),
+      );
     }
   });
 

@@ -1,10 +1,16 @@
 import type { ParticleCurvePoint } from "./particles";
 
 export const PARTICLE_SCALAR_VALUE_LIMIT = 100000;
-export const PARTICLE_SCALAR_CURVE_POINT_LIMIT = 8;
+/**
+ * @deprecated Curves no longer have a point cap; kept so existing imports
+ * still resolve.
+ */
+export const PARTICLE_SCALAR_CURVE_POINT_LIMIT = Number.POSITIVE_INFINITY;
 const PARTICLE_CURVE_DEFAULT_WEIGHT = 1 / 3;
 const PARTICLE_CURVE_SLOPE_LIMIT = 1000;
 const PARTICLE_CURVE_WEIGHT_LIMIT = 1;
+// Short curves (the common case) keep the branch-light linear scan.
+const LINEAR_SEGMENT_SCAN_LIMIT = 8;
 
 /**
  * One curve segment with its cubic Bezier control points already derived.
@@ -126,10 +132,26 @@ export function samplePreparedParticleCurve(
 ): number {
   if (x <= 0) return curve.firstY;
   if (x >= 1) return curve.lastY;
-  for (const segment of curve.segments) {
-    if (x <= segment.end) return samplePreparedParticleCurveSegment(segment, x);
+  const segments = curve.segments;
+  if (segments.length <= LINEAR_SEGMENT_SCAN_LIMIT) {
+    for (const segment of segments) {
+      if (x <= segment.end) {
+        return samplePreparedParticleCurveSegment(segment, x);
+      }
+    }
+    return curve.lastY;
   }
-  return curve.lastY;
+  // Long curves: find the first segment whose end is >= x (the same segment
+  // the linear scan picks) without walking every segment per sample.
+  let low = 0;
+  let high = segments.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (segments[mid]!.end < x) low = mid + 1;
+    else high = mid;
+  }
+  const segment = segments[low];
+  return segment ? samplePreparedParticleCurveSegment(segment, x) : curve.lastY;
 }
 
 /**
@@ -358,8 +380,7 @@ export function normalizeCurvePoints(
   const points = source
     .map((point) => normalizeCurvePoint(point, valueLimit))
     .filter((point): point is ParticleCurvePoint => Boolean(point))
-    .sort((a, b) => a.x - b.x)
-    .slice(0, PARTICLE_SCALAR_CURVE_POINT_LIMIT);
+    .sort((a, b) => a.x - b.x);
   if (points.length === 0) {
     return [
       { x: 0, y: 0 },
