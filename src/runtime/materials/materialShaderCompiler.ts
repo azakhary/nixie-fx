@@ -1,3 +1,4 @@
+import { materialTextureUsesColor } from "./color";
 import { expandMaterialSubgraphs } from "./subgraphs";
 import { numberOr } from "../../engine/particleModuleSettingUtils";
 import type { Vec4 } from "../../engine/math";
@@ -136,6 +137,7 @@ export function createMaterialNodePreviewFragment({
 
 class MaterialGlslCompiler {
   private readonly authoredGraph: ShaderGraph;
+  private readsParticleColor = false;
   private readonly nodeById = new Map<string, MaterialNode>();
   private readonly edgeById = new Map<string, MaterialEdge>();
   /** node id -> per-node sampler uniform name (only nodes with a resolved tex). */
@@ -237,9 +239,10 @@ class MaterialGlslCompiler {
           MATERIAL_SCENE_LIGHTING_NODE_TYPES.has(node.type) ||
           node.type === "unpackNormal",
       );
-    const header = needsLighting
+    let header = needsLighting
       ? `${MATERIAL_FRAGMENT_HEADER}${MATERIAL_LIGHTING_PRELUDE}`
       : MATERIAL_FRAGMENT_HEADER;
+    if (this.graph.colorVersion === 1) header += MATERIAL_COLOR_PRELUDE;
     if (!this.graph.nodes.some((node) => node.type === "twoSidedSign"))
       return header;
     // Three reverses the rasterizer winding for BackSide materials. Undo that
@@ -276,13 +279,14 @@ float materialTwoSidedSign() {
   }
 
   fragmentSource(fixed: MaterialFixedDescriptor | undefined): string {
+    this.readsParticleColor = false;
     const base = this.slotExpr("baseColor");
     const emissive = this.slotExpr("emissive");
     const opacity = this.slotScalarExpr("opacity");
     const opacityMask = this.slotExpr("opacityMask");
     const hasBase = base !== null;
     const hasEmissive = emissive !== null;
-    const baseExpr = base ?? "materialSampleMain(vUV)";
+    const baseExpr = base ?? this.colorExpr("materialSampleMain(vUV)");
     const emissiveExpr = emissive ?? "vec4(0.0)";
     const alphaExpr =
       opacity ??
@@ -304,9 +308,9 @@ void main(void) {
   vec4 outColor = baseColor;
   ${this.surfaceColorLine()}
   outColor.rgb *= (1.0 + max(0.0, ${emissiveScale}));
-  outColor *= vColor;
+  ${this.particleMultiply()}
   outColor.a = 1.0;
-  gl_FragColor = outColor;
+  ${this.outputLine()}
 }
 `;
     }
@@ -324,10 +328,10 @@ void main(void) {
     // soft alpha encode byte-identical to before.
     const alphaEncode =
       this.graph.blend === "masked"
-        ? `outColor *= vColor;
+        ? `${this.particleMultiply()}
   outColor.a = 1.0;`
         : `outColor.a = opacityValue * uFixedTint.a * uFixedOpacity;
-  outColor *= vColor;`;
+  ${this.particleMultiply()}`;
 
     return `${this.header()}${this.samplerUniformDeclarations()}
 void main(void) {
@@ -340,9 +344,28 @@ void main(void) {
   ${this.surfaceColorLine()}
   outColor.rgb *= (1.0 + max(0.0, ${emissiveScale}));
   ${alphaEncode}
-  gl_FragColor = outColor;
+  ${this.outputLine()}
 }
 `;
+  }
+
+  private particleMultiply(): string {
+    if (this.graph.colorVersion !== 1) return "outColor *= vColor;";
+    return this.readsParticleColor
+      ? ""
+      : "outColor *= materialSrgbToLinear(vColor);";
+  }
+
+  private outputLine(): string {
+    return this.graph.colorVersion === 1
+      ? "gl_FragColor = materialEncodeOutput(outColor);"
+      : "gl_FragColor = outColor;";
+  }
+
+  private colorExpr(expr: string): string {
+    return this.graph.colorVersion === 1
+      ? `materialSrgbToLinear(${expr})`
+      : expr;
   }
 
   nodePreviewFragmentSource(
@@ -388,7 +411,7 @@ void main(void) {
     return `${this.header()}${this.samplerUniformDeclarations()}
 void main(void) {
   vec4 value = ${selectedExpr};
-  gl_FragColor = vec4(clamp(value.rgb, 0.0, 1.0), ${node.type === "polarCoordinates" ? "1.0" : "clamp(value.a, 0.0, 1.0)"});
+  gl_FragColor = ${this.graph.colorVersion === 1 ? "materialEncodeOutput(" : ""}vec4(clamp(value.rgb, 0.0, 1.0), ${node.type === "polarCoordinates" ? "1.0" : "clamp(value.a, 0.0, 1.0)"})${this.graph.colorVersion === 1 ? ")" : ""};
 }
 `;
   }
@@ -432,29 +455,47 @@ void main(void) {
 
     switch (node.type) {
       case "constant":
-        return this.constVec4(p.value);
+        return p.kind === "color" ||
+          (p.kind === undefined && Array.isArray(p.value))
+          ? this.colorExpr(this.constVec4(p.value))
+          : this.constVec4(p.value);
       case "time":
         return "vec4(uTime)";
       case "twoSidedSign":
         return "vec4(materialTwoSidedSign())";
       case "param": {
         const name = typeof p.name === "string" ? p.name : "";
-        return this.constVec4(
+        const value = this.constVec4(
           resolveMaterialParamValue(this.graph, this.instance, name),
         );
+        return this.graph.params.find((param) => param.name === name)?.type ===
+          "color"
+          ? this.colorExpr(value)
+          : value;
       }
-      case "textureSample":
-        return this.sampleTexture(node, inputUv());
+      case "textureSample": {
+        const sample = this.sampleTexture(node, inputUv());
+        return materialTextureUsesColor(this.graph, node)
+          ? this.colorExpr(sample)
+          : sample;
+      }
       case "particleSubUV": {
         const uniform = this.nodeSamplerUniform.get(node.id);
         if (uniform) {
           // A node-picked texture overrides MainTex; the SubUV frame-blend stays
           // on the MainTex path (deferred), so sample the picked texture directly.
-          return `texture2D(${uniform}, fract(${inputUv()}))`;
+          const sample = `texture2D(${uniform}, fract(${inputUv()}))`;
+          return materialTextureUsesColor(this.graph, node)
+            ? this.colorExpr(sample)
+            : sample;
         }
-        return p.blend === true
-          ? `materialSampleSubUvBlend(${inputUv()})`
-          : `materialSampleMain(${inputUv()})`;
+        const sample =
+          p.blend === true
+            ? `materialSampleSubUvBlend(${inputUv()})`
+            : `materialSampleMain(${inputUv()})`;
+        return materialTextureUsesColor(this.graph, node)
+          ? this.colorExpr(sample)
+          : sample;
       }
       case "uv":
         return "vec4(vUV, 0.0, 0.0)";
@@ -521,7 +562,8 @@ void main(void) {
         return `vec4(clamp(1.0 - ((length(vUV - (${center}).xy) - ${(radius - edge).toFixed(8)}) / ${edge.toFixed(8)}), 0.0, 1.0))`;
       }
       case "particleColor":
-        return "vColor";
+        this.readsParticleColor = true;
+        return this.colorExpr("vColor");
       case "particleRelativeTime":
         return "vec4(clamp(vColor.a, 0.0, 1.0))";
       case "particleRandom":
@@ -779,13 +821,13 @@ void main(void) {
       })
       .sort((a, b) => a.position - b.position);
     if (stops.length === 0) return `vec4(${t})`;
-    let expr = this.constVec4(stops[0]!.color);
+    let expr = this.colorExpr(this.constVec4(stops[0]!.color));
     for (let i = 1; i < stops.length; i++) {
       const prev = stops[i - 1]!;
       const curr = stops[i]!;
       const span = Math.max(0.0001, curr.position - prev.position);
       const f = `clamp(((${t}) - ${prev.position.toFixed(8)}) / ${span.toFixed(8)}, 0.0, 1.0)`;
-      expr = `mix(${expr}, ${this.constVec4(curr.color)}, ${f})`;
+      expr = `mix(${expr}, ${this.colorExpr(this.constVec4(curr.color))}, ${f})`;
     }
     return expr;
   }
@@ -816,3 +858,22 @@ function toVec4(value: unknown, fallback: Vec4): Vec4 {
   }
   return [...fallback];
 }
+
+const MATERIAL_COLOR_PRELUDE = `
+vec4 materialSrgbToLinear(vec4 value) {
+  vec3 rgb = max(value.rgb, vec3(0.0));
+  return vec4(mix(rgb / 12.92, pow((rgb + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), rgb)), value.a);
+}
+vec4 materialEncodeOutput(vec4 value) {
+#ifdef NFX_THREE_OUTPUT
+  value = linearToOutputTexel(value);
+#else
+  vec3 rgb = max(value.rgb, vec3(0.0));
+  value.rgb = mix(rgb * 12.92, 1.055 * pow(rgb, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), rgb));
+#endif
+#ifdef PREMULTIPLIED_ALPHA
+  value.rgb *= value.a;
+#endif
+  return value;
+}
+`;

@@ -1,3 +1,4 @@
+import { straightAlphaGraphSource } from "./material";
 import { Matrix, Shader, Texture, type Shader as PixiShader } from "pixi.js";
 import type { Vec4 } from "../../engine/math";
 import type { MaterialArtifact, MaterialFixedDescriptor } from "../materials";
@@ -93,22 +94,33 @@ export function createTier2ParticleMaterialShader({
   if (!canRenderTier2ParticleContainerShader(artifact)) return null;
   const compiled = createMaterialPreviewFragment({ artifact, graph, instance });
   if (!compiled) return null;
-  const fragment = compiled.fragment;
+  const fragment =
+    graph.colorVersion === 1
+      ? `#define PREMULTIPLIED_ALPHA\n${compiled.fragment}`
+      : compiled.fragment;
   const fixed = artifact.fixed ?? defaultFixed(graph.blend);
   const tiles: [number, number] = [
     Math.max(1, Math.round(textureSheetTiles?.[0] ?? 1)),
     Math.max(1, Math.round(textureSheetTiles?.[1] ?? 1)),
   ];
-  const mainSource = (texture ?? Texture.WHITE).source;
+  const sourceFor = (value: Texture) =>
+    graph.colorVersion === 1 ? straightAlphaGraphSource(value) : value.source;
+  const mainSource = sourceFor(texture ?? Texture.WHITE);
   const perNodeSamplers: Record<string, typeof mainSource> = {};
   for (const binding of compiled.samplers) {
-    perNodeSamplers[binding.uniform] = (
-      samplerTextures?.get(binding.path) ?? Texture.WHITE
-    ).source;
+    perNodeSamplers[binding.uniform] = sourceFor(
+      samplerTextures?.get(binding.path) ?? Texture.WHITE,
+    );
   }
   return Shader.from({
     gl: {
-      vertex: PARTICLE_VERTEX_SHADER,
+      vertex:
+        graph.colorVersion === 1
+          ? PARTICLE_VERTEX_SHADER.replace(
+              "vec4(aColor.rgb * aColor.a, aColor.a) * uColor",
+              "aColor * vec4(uColor.a > 0.0 ? uColor.rgb / uColor.a : vec3(0.0), uColor.a)",
+            )
+          : PARTICLE_VERTEX_SHADER,
       fragment,
       name: `vfx-tier2-${artifact.shaderId}`,
     },

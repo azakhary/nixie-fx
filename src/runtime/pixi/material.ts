@@ -195,3 +195,35 @@ export function createMaterialBakeTexture(
 
   return Texture.from(canvas);
 }
+
+/** Raw texture inputs for linear graph math; never change a shared provider source. */
+const graphSources = new WeakMap<Texture["source"], Texture["source"]>();
+export function straightAlphaGraphSource(texture: Texture): Texture["source"] {
+  const original = texture.source;
+  if (!original.resource || original.alphaMode === "no-premultiply-alpha")
+    return original;
+  let shared = graphSources.get(original);
+  if (!shared) {
+    const options = {
+      resource: original.resource,
+      alphaMode: "no-premultiply-alpha" as const,
+      resolution: original.resolution,
+      autoGenerateMipmaps: original.autoGenerateMipmaps,
+      style: original.style,
+    };
+    if (ImageSource.test(original.resource)) shared = new ImageSource(options);
+    else if (CanvasSource.test(original.resource))
+      shared = new CanvasSource(options);
+    else return original;
+    graphSources.set(original, shared);
+    const owned = shared;
+    const update = () => owned.update();
+    original.on("update", update);
+    original.once("destroy", () => {
+      original.off("update", update);
+      owned.destroy();
+      graphSources.delete(original);
+    });
+  }
+  return shared;
+}

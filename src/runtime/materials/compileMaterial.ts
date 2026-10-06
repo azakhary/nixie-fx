@@ -930,6 +930,11 @@ function compileMaterialTier(
   const mainTexUid = opts.mainTexUid ?? null;
   const analysis = analyzeGraphTier(graph);
   const index = indexGraph(graph);
+  // Linear graph math must not pass through the legacy CPU bake/fixed path.
+  if (graph.colorVersion === 1 && analysis.tier !== "tier3-defer") {
+    analysis.tier = "tier2-shader";
+    analysis.vertexUvNodeIds = [];
+  }
   // The bake operates on MainTex's already-sampled pixels and caches only its
   // identity. Independently assigned image assets must remain live resources:
   // they can load/change separately and need not share MainTex's resolution.
