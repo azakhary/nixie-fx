@@ -52,6 +52,7 @@ The export format is engine-neutral JSON with official runtimes for Three.js and
 - Treat authored paths as bundle-relative lookup keys. Map them to URLs or atlas frames in the host provider.
 - Use stable seeds when deterministic playback matters.
 - Pause or destroy inactive runtimes; hidden scenes must not keep ticking.
+- For Three.js performance work, inspect per-emitter draw counts and integrate the public `ThreeVfxBatcher` with the host's final transparent ordering. Read the batching section in [three.md](references/three.md). Sharing a material alone does not merge draws; supplying a custom material currently disables the stock instanced fast path.
 - Do not claim editor parity until the real exported effect has been observed in the target renderer.
 
 ## Completion checks
