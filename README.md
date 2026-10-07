@@ -158,6 +158,60 @@ Always inspect the exported backend support report. A blocked effect must not
 be silently treated as supported, and a partial effect can contain deliberate
 backend approximations.
 
+## Batching Three.js billboard emitters
+
+`ThreeVfxBatcher` is an optional host-controlled submission stage from
+`nixie-fx/three`. The ordinary renderer instances particles per emitter. The
+batcher combines consecutive compatible emitter draws, including different
+textures, while keeping simulation and authoring independent. It retains GPU
+buffers and original texture filtering/resolution; no texture atlas bake or
+second simulation pass is required.
+
+```ts
+import { ThreeVfxBatcher } from "nixie-fx/three";
+
+const batches = new ThreeVfxBatcher({ parent: scene, maxTextures: 4 });
+
+// Each frame, before visibility changes or simulation:
+batches.beginFrame();
+vfx.update(deltaSeconds);
+// Host returns its FINAL visible transparent order, including non-VFX barriers.
+const ordered = host.getOrderedTransparentObjects(camera);
+for (const batch of batches.prepare(ordered)) {
+  host.setTransparentSortKey(
+    batch.mesh,
+    host.getTransparentSortKey(batch.firstSource),
+  );
+}
+renderer.render(scene, camera);
+// Teardown, before releasing VFX/provider resources:
+batches.dispose();
+```
+
+`host.*` denotes integration points in your render pipeline, not Nixie methods.
+The host must exclude derived batch meshes from the next source draw list and
+apply the complete sort key (group order, render order, depth, tie-break ID) of
+`firstSource`. Re-sorting a merged mesh solely by its new bounding sphere can
+change alpha blending. Do not pass only VFX objects if other transparent objects
+interleave. Call `beginFrame` before **each camera/view** and update simulation
+only once per frame. It restores hidden sources and hides previous batches.
+
+The batcher currently supports stock texture-only instanced billboards; custom
+materials, trails and meshes remain separate barriers. Different blend/depth
+states, ordering layers and sampler-budget overflow split runs. Clamp
+`maxTextures` (1–8, default 4) to your available fragment sampler budget. Material
+compile hooks must have compatible semantics/uniforms when their program keys
+match; configure derived materials consistently with source materials and avoid
+applying the same hook twice. Do not mutate the stock instance-buffer contract.
+
+`batches.stats` reports visible eligible source draws, resulting draws, saved
+draws and particles for the supplied view. `vfx.stats` retains its emitter-level
+simulation/submission diagnostics; renderer counters remain authoritative for
+the whole scene. For example, six adjacent compatible emitter draws using three
+textures become one draw, saving five. No fixed count is promised across all
+camera/order configurations. Removing draw submissions does not remove fragment
+shading or transparent overdraw.
+
 ## Scene lighting
 
 Particles are unlit by default. A material whose **Shading Model** is `lit`

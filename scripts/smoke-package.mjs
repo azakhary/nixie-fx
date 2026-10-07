@@ -51,7 +51,11 @@ const entryChecks = [
   },
   {
     file: "three.js",
-    required: ["ThreeVfxRenderer", "repairMirroredGeometryWinding"],
+    required: [
+      "ThreeVfxRenderer",
+      "ThreeVfxBatcher",
+      "repairMirroredGeometryWinding",
+    ],
     forbiddenImports: ["pixi.js", "node:"],
   },
   {

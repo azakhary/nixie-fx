@@ -14,6 +14,8 @@ import {
 import { resolveParticleDepthWrite } from "../../engine/particles";
 import type { ParticleEmitterDefinition } from "../../engine/particles";
 
+import { registerBillboardBatchSource } from "./billboardBatchSources";
+
 const INSTANCED_VERTEX_SHADER = `
 attribute vec3 aInstanceColor;
 attribute float aInstanceAlpha;
@@ -124,6 +126,7 @@ export class ThreeInstancedBillboardView {
     this.mesh.count = 0;
     this.mesh.visible = false;
     this.mesh.frustumCulled = false;
+    registerBillboardBatchSource(this.mesh);
   }
 
   setRenderState(emitter: ParticleEmitterDefinition): void {

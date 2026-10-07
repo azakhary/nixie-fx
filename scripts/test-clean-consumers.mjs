@@ -144,6 +144,7 @@ try {
 import type { Camera, Object3D } from "three";
 import {
   ThreeVfxRenderer,
+  ThreeVfxBatcher,
   repairMirroredGeometryWinding,
   type ThreeVfxRendererOptions,
 } from "nixie-fx/three";
@@ -154,13 +155,14 @@ const options: ThreeVfxRendererOptions = { camera, parent };
 const Runtime: typeof ThreeVfxRenderer = ThreeVfxRenderer;
 void options;
 void Runtime;
+new ThreeVfxBatcher({parent}).dispose();
 void repairMirroredGeometryWinding;
 `,
       runtimeSource: `
 import { createRequire } from "node:module";
-import { ThreeVfxRenderer, repairMirroredGeometryWinding } from "nixie-fx/three";
+import { ThreeVfxRenderer, ThreeVfxBatcher, repairMirroredGeometryWinding } from "nixie-fx/three";
 
-if (typeof ThreeVfxRenderer !== "function" || typeof repairMirroredGeometryWinding !== "function") {
+if (typeof ThreeVfxBatcher !== "function" || typeof ThreeVfxRenderer !== "function" || typeof repairMirroredGeometryWinding !== "function") {
   throw new Error("Three public API is unavailable.");
 }
 const require = createRequire(import.meta.url);
