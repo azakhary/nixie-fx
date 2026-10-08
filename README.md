@@ -212,6 +212,47 @@ textures become one draw, saving five. No fixed count is promised across all
 camera/order configurations. Removing draw submissions does not remove fragment
 shading or transparent overdraw.
 
+## Batching unlit meshes, graphs and trails
+
+`ThreeSurfaceBatcher` from `nixie-fx/three` extends the same host-owned ordering
+contract to supported unlit Nixie graph meshes, basic-material history ribbons,
+and stock billboard instances. Use it **instead of**, not on the same sources as,
+`ThreeVfxBatcher`. The constructor accepts `parent` and `maxTextures` (default 15;
+reserve one additional fragment sampler for per-draw parameter data). Clamp this
+budget to `renderer.capabilities.maxTextures - 1`. It requires WebGL2.
+
+Call `beginFrame()` before visibility changes/update, then `prepare(ordered)` with
+the final opaque and transparent order, including every intervening non-VFX
+object as a barrier. Apply the complete first-source sort key to each returned
+batch, including opaque material ordering. Use separate batchers for roots drawn
+in separate passes, such as a bloom-only layer. Exclude derived meshes from the
+next input list; never move source objects into the batch root.
+
+This is retained **triangle batching**, not an additional particle simulation or
+GPU mesh instancing. It writes different topologies into shared vertex/index
+buffers and per-particle graph uniforms into a data texture. Runs are capped at 2048 parameter rows;
+oversized stock instanced draws remain on their original path. Original texture
+objects and per-particle parameters remain independent. Transparent double-sided
+materials retain their back/front triangle passes within the batch; neither
+triangle count nor overdraw is reduced. Trail buffers also retain capacity and
+use `drawRange` for live contents; attribute counts can exceed live vertex counts.
+
+Unsupported materials stay visible as ordinary draws and split batches. This
+includes lit materials, arbitrary shaders/hooks, skinning/morphs, material groups,
+and unsupported vertex inputs. Blend/depth state, ordering barriers, shader and
+sampler budgets can require additional draws. The host must bypass batching when
+its scene requires fog, override materials, or another unsupported render pass.
+This API does **not** promise a universal two- or three-draw effect budget.
+
+`stats` reports eligible source draws (including double-sided passes), resulting
+batch draws, saved draws, submitted vertices, fallback objects and new retained
+run allocations (`createdRuns`). It excludes
+postprocessing and non-batched scene objects. Measure `renderer.info` across the
+whole host frame with one reset; a dedicated HDR bloom stack still has its own
+fullscreen draws. CPU geometry upload cost can exceed the submission savings for
+small effects: benchmark warmed moving scenes as well as draw counts and compare
+fixed-seed images before enabling this path in production.
+
 ## Scene lighting
 
 Particles are unlit by default. A material whose **Shading Model** is `lit`

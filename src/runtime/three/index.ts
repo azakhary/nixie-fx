@@ -5,3 +5,5 @@ export * from "./types";
 export * from "./sceneLights";
 export * from "./hdrEffectLayer";
 export * from "./billboardBatcher";
+
+export * from "./surfaceBatcher";

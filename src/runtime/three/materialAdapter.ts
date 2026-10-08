@@ -542,6 +542,7 @@ function createThreeShaderMaterial(
       threeSideForGraph(graph) === DoubleSide
     ),
   });
+  material.userData.nixieSurfaceGraph = !sceneLit;
   return { material, ownedTextures: [] };
 }
 

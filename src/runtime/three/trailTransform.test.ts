@@ -56,7 +56,18 @@ function setup(worldSpace = true, velocity = 0) {
       if (!(object instanceof Mesh) || !object.visible) return;
       const p = object.geometry.getAttribute("position");
       if (!p || object.geometry.getAttribute("color")?.itemSize !== 4) return;
-      for (let i = 0; i < p.count; i += 2) {
+      // Retained buffers keep spare capacity; sample only referenced live pairs.
+      const index = object.geometry.index;
+      const start = object.geometry.drawRange.start;
+      const end = Math.min(
+        start + object.geometry.drawRange.count,
+        index?.count ?? p.count,
+      );
+      const referenced = new Set<number>();
+      for (let i = start; i < end; i++)
+        referenced.add(index ? index.getX(i) : i);
+      for (const i of [...referenced].sort((a, b) => a - b)) {
+        if (i % 2 !== 0 || !referenced.has(i + 1)) continue;
         points.push(
           new Vector3()
             .fromBufferAttribute(p, i)
