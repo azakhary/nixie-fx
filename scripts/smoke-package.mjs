@@ -54,6 +54,7 @@ const entryChecks = [
     required: [
       "ThreeVfxRenderer",
       "ThreeVfxBatcher",
+      "ThreeSurfaceBatcher",
       "repairMirroredGeometryWinding",
     ],
     forbiddenImports: ["pixi.js", "node:"],

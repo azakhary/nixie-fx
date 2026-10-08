@@ -12,7 +12,6 @@ describe("project settings", () => {
       effectDataPath: ".",
       outputPath: "out/vfx",
       assetRootPath: ".",
-      materialsFolder: "materials",
       allowExternalOutput: false,
     });
     expect(
@@ -56,21 +55,17 @@ describe("project settings", () => {
     ).toContain("URL");
   });
 
-  it("requires a real materials subfolder", () => {
+  it("drops the legacy materials folder setting", () => {
+    expect(
+      normalizeProjectSettings({ materialsFolder: "fx-materials" }),
+    ).not.toHaveProperty("materialsFolder");
     expect(
       validateProjectSettingsPaths({
         effectDataPath: ".",
         outputPath: "out/vfx",
         assetRootPath: ".",
-        materialsFolder: ".",
         allowExternalOutput: false,
       }),
-    ).toEqual([
-      {
-        key: "materialsFolder",
-        label: "Materials Folder",
-        message: "Materials Folder must be a folder under the asset root.",
-      },
-    ]);
+    ).toEqual([]);
   });
 });

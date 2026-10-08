@@ -489,7 +489,8 @@ export class PixiVfxEffectInstance {
       return APPLY_EMITTER_PARTICLE_COLOR;
     }
     const resolved = this.resolveEmitterMaterial(emitter, null);
-    if (!resolved?.artifact) return APPLY_EMITTER_PARTICLE_COLOR;
+    if (!resolved?.artifact || resolved.graph?.colorVersion === 1)
+      return APPLY_EMITTER_PARTICLE_COLOR;
     return {
       rgb: resolved.artifact.usesParticleColorRGB,
       alpha: resolved.artifact.usesParticleColorAlpha,

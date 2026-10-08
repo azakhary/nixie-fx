@@ -315,7 +315,6 @@ async function exportProject(
     assetRootPath: settings.assetRootPath,
     outputPath: settings.outputPath,
     allowExternalOutput: settings.allowExternalOutput,
-    materialsFolder: settings.materialsFolder,
   });
   emitValidation(result.validation, stdout, stderr);
 

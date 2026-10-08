@@ -3,19 +3,17 @@ export const EDITOR_PROJECT_APP_ID = "vfx-editor";
 export const DEFAULT_PROJECT_EFFECTS_PATH = ".";
 export const DEFAULT_PROJECT_OUTPUT_PATH = "out/vfx";
 export const DEFAULT_PROJECT_ASSET_ROOT_PATH = ".";
-export const DEFAULT_PROJECT_MATERIALS_FOLDER = "materials";
 
 export interface EditorProjectSettings {
   effectDataPath: string;
   outputPath: string;
   assetRootPath: string;
-  materialsFolder: string;
   allowExternalOutput: boolean;
   lastEffectFile?: string;
 }
 
 export type EditorProjectPathSettingKey =
-  "effectDataPath" | "outputPath" | "assetRootPath" | "materialsFolder";
+  "effectDataPath" | "outputPath" | "assetRootPath";
 
 export interface EditorProjectSettingsPathIssue {
   key: EditorProjectPathSettingKey;
@@ -34,7 +32,6 @@ export const EDITOR_PROJECT_PATH_SETTING_LABELS: Record<
   effectDataPath: "Effect Data",
   outputPath: "Export Output",
   assetRootPath: "Asset Root",
-  materialsFolder: "Materials Folder",
 };
 
 export function normalizeProjectSettings(
@@ -47,8 +44,6 @@ export function normalizeProjectSettings(
     readString(source.outputPath) ?? DEFAULT_PROJECT_OUTPUT_PATH;
   const assetRootPath =
     readString(source.assetRootPath) ?? DEFAULT_PROJECT_ASSET_ROOT_PATH;
-  const materialsFolder =
-    readString(source.materialsFolder) ?? DEFAULT_PROJECT_MATERIALS_FOLDER;
   const allowExternalOutput = source.allowExternalOutput === true;
   const lastEffectFile = readString(source.lastEffectFile);
 
@@ -56,7 +51,6 @@ export function normalizeProjectSettings(
     effectDataPath,
     outputPath,
     assetRootPath,
-    materialsFolder,
     allowExternalOutput,
     ...(lastEffectFile ? { lastEffectFile } : {}),
   };
@@ -102,24 +96,11 @@ export function validateProjectSettingsPath(
 export function validateProjectSettingsPaths(
   settings: Pick<
     EditorProjectSettings,
-    | "effectDataPath"
-    | "outputPath"
-    | "assetRootPath"
-    | "materialsFolder"
-    | "allowExternalOutput"
+    "effectDataPath" | "outputPath" | "assetRootPath" | "allowExternalOutput"
   >,
 ): EditorProjectSettingsPathIssue[] {
   return PROJECT_SETTINGS_PATH_KEYS.flatMap((key) => {
     const label = EDITOR_PROJECT_PATH_SETTING_LABELS[key];
-    if (key === "materialsFolder" && settings[key].trim() === ".") {
-      return [
-        {
-          key,
-          label,
-          message: `${label} must be a folder under the asset root.`,
-        },
-      ];
-    }
     const message = validateProjectSettingsPath(settings[key], label, {
       allowExternal:
         key === "effectDataPath" ||
@@ -133,11 +114,7 @@ export function validateProjectSettingsPaths(
 export function assertProjectSettingsPaths(
   settings: Pick<
     EditorProjectSettings,
-    | "effectDataPath"
-    | "outputPath"
-    | "assetRootPath"
-    | "materialsFolder"
-    | "allowExternalOutput"
+    "effectDataPath" | "outputPath" | "assetRootPath" | "allowExternalOutput"
   >,
 ): void {
   const issues = validateProjectSettingsPaths(settings);
@@ -148,7 +125,6 @@ const PROJECT_SETTINGS_PATH_KEYS: readonly EditorProjectPathSettingKey[] = [
   "effectDataPath",
   "outputPath",
   "assetRootPath",
-  "materialsFolder",
 ];
 
 function readString(value: unknown): string | undefined {

@@ -33,3 +33,6 @@ export * from "./runtime/schema/authoring";
 export * from "./runtime/schema/validation";
 export * from "./runtime/schema/scene";
 export * from "./runtime/support";
+
+export * from "./runtime/lights/candidates";
+export * from "./runtime/lights/selection";

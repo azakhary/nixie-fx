@@ -12,13 +12,13 @@ describe("scene bloom mapping", () => {
     ).toEqual({ enabled: true, strength: 1, radius: 0.7, threshold: 1 });
   });
 
-  it("clamps the pass threshold but hands the particle encoder the raw one", () => {
+  it("preserves HDR thresholds above one for the pass and particle encoder", () => {
     const bloom = {
       ...createDefaultSceneBloom(),
       threshold: 2.5,
       exposure: -1,
     };
-    expect(sceneBloomToUnrealBloomParameters(bloom).threshold).toBe(1);
+    expect(sceneBloomToUnrealBloomParameters(bloom).threshold).toBe(2.5);
     expect(sceneBloomToThreeVfxOptions(bloom)).toEqual({
       enabled: true,
       threshold: 2.5,

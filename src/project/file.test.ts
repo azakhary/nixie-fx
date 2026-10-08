@@ -20,7 +20,6 @@ describe("editor project file", () => {
         effectDataPath: "effects",
         outputPath: "out/vfx",
         assetRootPath: ".",
-        materialsFolder: "materials",
         allowExternalOutput: false,
       },
     });

@@ -26,7 +26,7 @@ export interface ThreeUnrealBloomParameters {
   enabled: boolean;
   strength: number;
   radius: number;
-  /** Luminance threshold; UnrealBloomPass works in 0..1. */
+  /** Linear HDR luminance threshold; values above 1 exclude ordinary lit surfaces. */
   threshold: number;
 }
 
@@ -48,7 +48,7 @@ export function sceneBloomToUnrealBloomParameters(
     enabled: isSceneBloomActive(bloom),
     strength: clamp(bloom.intensity, 0, 4) * THREE_BLOOM_STRENGTH_SCALE,
     radius: clamp(bloom.scatter, 0, 1),
-    threshold: clamp(bloom.threshold, 0, 1),
+    threshold: clamp(bloom.threshold, 0, 10),
   };
 }
 
