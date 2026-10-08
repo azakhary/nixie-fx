@@ -1,0 +1,88 @@
+{
+  "app": "vfx-editor",
+  "kind": "scene",
+  "version": 1,
+  "name": "Particle lights review",
+  "ambient": {
+    "source": "gradient",
+    "color": "#8a94a3",
+    "skyColor": "#f7f9ff",
+    "groundColor": "#51606f",
+    "intensity": 0.025
+  },
+  "lights": [],
+  "props": [
+    {
+      "id": "floor",
+      "name": "Rough lit floor",
+      "mesh": "box.json",
+      "visible": true,
+      "position": [
+        0,
+        -0.2,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        10,
+        0.3,
+        7
+      ]
+    },
+    {
+      "id": "wall",
+      "name": "Back wall",
+      "mesh": "box.json",
+      "visible": true,
+      "position": [
+        0,
+        1.5,
+        -2
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        10,
+        3,
+        0.25
+      ]
+    },
+    {
+      "id": "block",
+      "name": "Nearby block",
+      "mesh": "box.json",
+      "visible": true,
+      "position": [
+        0,
+        0.45,
+        0.65
+      ],
+      "rotation": [
+        0,
+        20,
+        0
+      ],
+      "scale": [
+        0.65,
+        1,
+        0.65
+      ]
+    }
+  ],
+  "bloom": {
+    "enabled": false,
+    "threshold": 1,
+    "intensity": 4,
+    "exposure": 0,
+    "scatter": 0.7,
+    "highQualityFiltering": false,
+    "downscale": "quarter"
+  }
+}

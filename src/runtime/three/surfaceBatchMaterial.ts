@@ -17,6 +17,7 @@ export interface SurfaceProgram {
   samplers: string[];
   kind: "graph" | "basic" | "billboard";
   vertexDynamicParams: boolean;
+  straightParticleColor: boolean;
 }
 interface CachedSurfaceProgram {
   program: SurfaceProgram;
@@ -110,6 +111,7 @@ export function surfaceProgram(mesh: Mesh): SurfaceProgram | null {
     samplers: string[] = [];
   let fragment = "";
   let vertexDynamicParams = false;
+  let straightParticleColor = false;
   if (kind === "graph") {
     const shader = m as ShaderMaterial;
     const varyings = [
@@ -134,9 +136,27 @@ export function surfaceProgram(mesh: Mesh): SurfaceProgram | null {
       !mesh.geometry.getAttribute("trailDynamicParams")
     )
       return null;
+    // Versioned color graphs use straight particle color and a known output
+    // prelude. Resolve only these runtime-owned macros; arbitrary directives
+    // remain unsupported and take the ordinary rendering path.
+    straightParticleColor = shader.fragmentShader.startsWith(
+      "#define NFX_THREE_OUTPUT\n",
+    );
     fragment = shader.fragmentShader
       .replace(/precision\s+\w+\s+float\s*;/g, "")
       .replace(/varying\s+\w+\s+\w+\s*;/g, "");
+    if (straightParticleColor) {
+      fragment = fragment
+        .replace("#define NFX_THREE_OUTPUT\n", "")
+        .replace(
+          /#ifdef NFX_THREE_OUTPUT\n([\s\S]*?)#else[\s\S]*?#endif/g,
+          "$1",
+        )
+        .replace(
+          /#ifdef PREMULTIPLIED_ALPHA\n([\s\S]*?)#endif/g,
+          m.premultipliedAlpha ? "$1" : "",
+        );
+    }
     fragment = fragment.replace(
       /uniform\s+(\w+)\s+(\w+)\s*;/g,
       (_all, type: string, name: string) => {
@@ -190,6 +210,7 @@ export function surfaceProgram(mesh: Mesh): SurfaceProgram | null {
     samplers,
     kind,
     vertexDynamicParams,
+    straightParticleColor,
   } satisfies SurfaceProgram;
   cache.set(m, {
     program,
@@ -231,7 +252,12 @@ export function compileSurfacePrograms(
     );
     if (p.vertexDynamicParams)
       replacements.set("uDynamicParams", "vNfxDynamic");
-    replacements.set("vColor", "vec4(vNfxColor.rgb*vNfxColor.a,vNfxColor.a)");
+    replacements.set(
+      "vColor",
+      p.straightParticleColor
+        ? "vNfxColor"
+        : "vec4(vNfxColor.rgb*vNfxColor.a,vNfxColor.a)",
+    );
     result +=
       p.fragment.replace(
         /\b[A-Za-z_]\w*\b/g,

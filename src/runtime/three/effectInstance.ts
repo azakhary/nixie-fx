@@ -41,9 +41,18 @@ import {
   normalizeSeed,
   updateEmitterLayerRanks,
 } from "./rendererUtils";
+import { ThreeEffectLightCandidates } from "./effectLightCandidates";
 const FIXED_SEEK_STEP_SECONDS = 1 / 60;
 export class ThreeVfxEffectInstance implements VfxEffectInstance {
   readonly root = new Group();
+  lightRevision = 0;
+  private readonly lightCandidates = new ThreeEffectLightCandidates(this.root);
+  get lightsPaused(): boolean {
+    return this.paused;
+  }
+  getLightCandidates() {
+    return this.lightCandidates.getWorldCandidates();
+  }
   readonly stats: ThreeVfxEffectStats = createEmptyEffectStats();
 
   private effect: ParticleEffectDefinition;
@@ -93,6 +102,9 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const owner = this;
     this.drawer = new ThreeEmitterDrawer({
+      get lightCandidates() {
+        return owner.lightCandidates;
+      },
       get root() {
         return owner.root;
       },
@@ -169,6 +181,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     if (this.destroyed) return;
     this.paused = false;
     if (!this.runner.isActive) {
+      this.lightCandidates.startedAt = this.timeSeconds;
       this.runner.reset(
         this.effect,
         this.position,
@@ -186,6 +199,8 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   }
 
   stop(): void {
+    this.lightCandidates.clear();
+    this.lightRevision++;
     this.runner.stop();
     this.clearViews();
     this.syncStats(0, 0, 0, 0, 0);
@@ -213,6 +228,8 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
 
   seek(timeSeconds: number): void {
     if (this.destroyed) return;
+    this.lightRevision++;
+    this.lightCandidates.startedAt = 0;
     const target = Math.max(0, Number.isFinite(timeSeconds) ? timeSeconds : 0);
     // A reset reuses particle seeds/timestamps; old trails must not join the
     // new run or survive a backwards seek.
@@ -428,6 +445,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   setVisible(visible: boolean): void {
     this.visible = visible;
     this.root.visible = visible;
+    this.lightRevision++;
   }
 
   setCamera(camera: Camera): void {
@@ -460,6 +478,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     options: { preserveViews?: boolean } = {},
   ): ParticleEffectDefinition {
     this.effect = normalizeThreeVfxEffect(effect);
+    this.lightRevision++;
     this.runner.updateDefinition(this.effect);
     // Re-resolve emission sources: the edited definition may have switched an
     // emitter's spawn shape or its emission mesh asset.
@@ -487,6 +506,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   }
 
   private draw(timeSeconds: number): void {
+    this.lightCandidates.clear();
     if (!this.visible) return;
     this.ensureViews();
     this.debugTransforms.length = 0;
@@ -516,6 +536,12 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
         }
         continue;
       }
+      this.lightCandidates.beginEmitter(
+        emitter,
+        state,
+        timeSeconds,
+        this.runner.isActive,
+      );
       const drawResult = this.drawer.drawEmitter(
         view,
         emitter,

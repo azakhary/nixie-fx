@@ -111,6 +111,14 @@ export class ThreeEmitterDrawer {
         view.materialFixed,
         view.materialParticleColorUsage,
       );
+      if (sample)
+        this.context.lightCandidates.addParticle(
+          emitter,
+          state,
+          particleIndex,
+          sample,
+          this.context.position,
+        );
       if (!sample?.visible) continue;
       // A carrier can be invisible while feeding an independently shaded trail.
       // Record history before culling its surface, not before simulation.

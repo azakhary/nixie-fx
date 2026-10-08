@@ -7,3 +7,4 @@ export * from "./hdrEffectLayer";
 export * from "./billboardBatcher";
 
 export * from "./surfaceBatcher";
+export * from "./vfxLights";

@@ -25,6 +25,8 @@ import type {
   ThreeVfxParticleDebugTransform,
 } from "./types";
 
+import type { ThreeEffectLightCandidates } from "./effectLightCandidates";
+
 export interface ThreeEmitterDrawParameters {
   sizeMultiplier: number;
   colorTint: [number, number, number, number];
@@ -81,6 +83,7 @@ export interface ParticleSample {
   rotation: Vec3;
   color: Color;
   shaderColor: Vec3;
+  lightColor: [number, number, number, number];
   trailColor: [number, number, number, number];
   alpha: number;
   alignmentAxis: Vector3;
@@ -100,6 +103,7 @@ export interface ThreeEmitterDrawResult {
 /** Shared frame inputs; getters keep host changes visible without per-frame allocation. */
 export interface ThreeParticleFrameContext {
   readonly root: Group;
+  readonly lightCandidates: ThreeEffectLightCandidates;
   readonly runner: ParticleEffectRunner;
   readonly position: Vec3;
   readonly camera: Camera;

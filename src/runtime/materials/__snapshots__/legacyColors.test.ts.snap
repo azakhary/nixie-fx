@@ -1,0 +1,49 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`legacy shader text from main > preserves add shaders 1`] = `
+{
+  "pixiFragment": "51bc3e4b9a9dea3a29e43b208465029d783be58805eeaafcec5a13921a9df1e7",
+  "pixiVertex": "44389a15cbcd1cc3165ea8fdf4ee581bdca0265a9b050a38a307c8230a7e1337",
+  "preview": "51bc3e4b9a9dea3a29e43b208465029d783be58805eeaafcec5a13921a9df1e7",
+  "threeFragment": "51bc3e4b9a9dea3a29e43b208465029d783be58805eeaafcec5a13921a9df1e7",
+  "threeVertex": "e4c664add228ab4901c7e119c9432c4d36dbac00115d53eed6461b9265589761",
+  "trailFragment": "2b59054df21e063085854f5bc637fb79083db71429814d74ab21af2875b17526",
+  "trailVertex": "e5d10ed55ff53f2e91a3a29c0b05ded0fd815a4597d6fe910610539064bdb9ff",
+}
+`;
+
+exports[`legacy shader text from main > preserves masked shaders 1`] = `
+{
+  "pixiFragment": "2a1827f842ab46eb1cb1746f7190e71c59e63d6e3280d7c38090e4376df63395",
+  "pixiVertex": "44389a15cbcd1cc3165ea8fdf4ee581bdca0265a9b050a38a307c8230a7e1337",
+  "preview": "2a1827f842ab46eb1cb1746f7190e71c59e63d6e3280d7c38090e4376df63395",
+  "threeFragment": "2a1827f842ab46eb1cb1746f7190e71c59e63d6e3280d7c38090e4376df63395",
+  "threeVertex": "e4c664add228ab4901c7e119c9432c4d36dbac00115d53eed6461b9265589761",
+  "trailFragment": "ea11594131a735d62e90670a15eb6b36f22001d8e881324c8018033ce4218e90",
+  "trailVertex": "e5d10ed55ff53f2e91a3a29c0b05ded0fd815a4597d6fe910610539064bdb9ff",
+}
+`;
+
+exports[`legacy shader text from main > preserves normal shaders 1`] = `
+{
+  "pixiFragment": "51bc3e4b9a9dea3a29e43b208465029d783be58805eeaafcec5a13921a9df1e7",
+  "pixiVertex": "44389a15cbcd1cc3165ea8fdf4ee581bdca0265a9b050a38a307c8230a7e1337",
+  "preview": "51bc3e4b9a9dea3a29e43b208465029d783be58805eeaafcec5a13921a9df1e7",
+  "threeFragment": "51bc3e4b9a9dea3a29e43b208465029d783be58805eeaafcec5a13921a9df1e7",
+  "threeVertex": "e4c664add228ab4901c7e119c9432c4d36dbac00115d53eed6461b9265589761",
+  "trailFragment": "2b59054df21e063085854f5bc637fb79083db71429814d74ab21af2875b17526",
+  "trailVertex": "e5d10ed55ff53f2e91a3a29c0b05ded0fd815a4597d6fe910610539064bdb9ff",
+}
+`;
+
+exports[`legacy shader text from main > preserves opaque shaders 1`] = `
+{
+  "pixiFragment": "7ee15a0efb6f7d273e3da01220d1bc81457ac3e3a036d45608a8f2512d7321a3",
+  "pixiVertex": "44389a15cbcd1cc3165ea8fdf4ee581bdca0265a9b050a38a307c8230a7e1337",
+  "preview": "7ee15a0efb6f7d273e3da01220d1bc81457ac3e3a036d45608a8f2512d7321a3",
+  "threeFragment": "7ee15a0efb6f7d273e3da01220d1bc81457ac3e3a036d45608a8f2512d7321a3",
+  "threeVertex": "e4c664add228ab4901c7e119c9432c4d36dbac00115d53eed6461b9265589761",
+  "trailFragment": "70f6959028d1962d520c9506f72a829314716879e2ba2f8eabf5560739523b1f",
+  "trailVertex": "e5d10ed55ff53f2e91a3a29c0b05ded0fd815a4597d6fe910610539064bdb9ff",
+}
+`;

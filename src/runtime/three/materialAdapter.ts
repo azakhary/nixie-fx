@@ -124,6 +124,7 @@ export function createThreeTrailMaterial(
         "void main() {",
         "void main() {\n  uDynamicParams = trailDynamicParams;",
       )
+      .replace("vColor = uParticleColor;", "vColor = color;")
       .replace(
         "vColor = vec4(uParticleColor.rgb * uParticleColor.a, uParticleColor.a);",
         "vColor = vec4(color.rgb * color.a, color.a);",
@@ -181,7 +182,10 @@ export function createThreeEmitterMaterial(
         materialBlendOverridesEmitter(artifact.blend)
           ? artifact.blend
           : null;
-      if (materialInstance.shaderId !== SPRITE_MASTER_SHADER_ID) {
+      if (
+        materialInstance.shaderId !== SPRITE_MASTER_SHADER_ID &&
+        materialGraph.colorVersion !== 1
+      ) {
         particleColorUsage = {
           rgb: artifact.usesParticleColorRGB,
           alpha: artifact.usesParticleColorAlpha,
@@ -484,13 +488,24 @@ function createThreeShaderMaterial(
   const materialOwnsBlend = materialBlendOverridesEmitter(effectiveBlend);
   // Lit graphs and graphs reading lighting nodes bind Three's scene lights.
   const sceneLit = graph.shadingModel === "lit" || !!artifact.usesSceneLighting;
+  const vertex = sceneLit
+    ? THREE_LIT_PARTICLE_MATERIAL_VERTEX_SHADER
+    : THREE_PARTICLE_MATERIAL_VERTEX_SHADER;
+  const outputPrefix =
+    graph.colorVersion === 1 ? "#define NFX_THREE_OUTPUT\n" : "";
   const material = new ShaderMaterial({
-    vertexShader: sceneLit
-      ? THREE_LIT_PARTICLE_MATERIAL_VERTEX_SHADER
-      : THREE_PARTICLE_MATERIAL_VERTEX_SHADER,
+    vertexShader:
+      graph.colorVersion === 1
+        ? vertex.replace(
+            "vec4(uParticleColor.rgb * uParticleColor.a, uParticleColor.a)",
+            "uParticleColor",
+          )
+        : sceneLit
+          ? THREE_LIT_PARTICLE_MATERIAL_VERTEX_SHADER
+          : THREE_PARTICLE_MATERIAL_VERTEX_SHADER,
     fragmentShader: sceneLit
-      ? `${THREE_SCENE_LIGHTS_FRAGMENT_PREFIX}${compiled.fragment}`
-      : compiled.fragment,
+      ? `${outputPrefix}${THREE_SCENE_LIGHTS_FRAGMENT_PREFIX}${compiled.fragment}`
+      : `${outputPrefix}${compiled.fragment}`,
     lights: sceneLit,
     uniforms: {
       ...(sceneLit ? UniformsUtils.clone(UniformsLib.lights) : {}),

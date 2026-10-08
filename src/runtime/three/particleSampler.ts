@@ -91,6 +91,7 @@ export class ThreeParticleSampler {
     rotation: [0, 0, 0],
     color: new Color(),
     shaderColor: [1, 1, 1],
+    lightColor: [1, 1, 1, 1],
     trailColor: [1, 1, 1, 1],
     alpha: 1,
     alignmentAxis: new Vector3(),
@@ -334,6 +335,11 @@ export class ThreeParticleSampler {
       (localSpace && emitter.render.alignAxis === "screen"
         ? (emitter.spawn.rotation[2] * Math.PI) / 180
         : 0);
+    // Authored color is independent of preview exposure and shader output.
+    sample.lightColor[0] = initColor[0] * intensity * overLife[0];
+    sample.lightColor[1] = initColor[1] * intensity * overLife[1];
+    sample.lightColor[2] = initColor[2] * intensity * overLife[2];
+    sample.lightColor[3] = initColor[3] * overLife[3];
     sample.color.copy(color);
     sample.shaderColor[0] = renderColor[0];
     sample.shaderColor[1] = renderColor[1];

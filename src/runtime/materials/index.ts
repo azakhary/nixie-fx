@@ -6,3 +6,5 @@ export * from "./materialShaderCompiler";
 
 export * from "./subgraphs";
 export { MATERIAL_PREVIEW_LIGHTS_DEFINE } from "./materialFragmentPrelude";
+
+export * from "./color";

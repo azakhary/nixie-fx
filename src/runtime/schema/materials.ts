@@ -387,6 +387,8 @@ export interface MaterialSubgraphOutput {
 }
 
 export interface ShaderGraph {
+  /** 1 = linear graph inputs and encoded output. Absent = legacy colors. */
+  colorVersion?: 1;
   /** Reusable function asset; params define its input interface. */
   subgraph?: { outputs: MaterialSubgraphOutput[] };
   /** materialShaderId base. */
@@ -698,6 +700,7 @@ export function normalizeShaderGraph(value: unknown): ShaderGraph {
   if (MATERIAL_RENDER_FACES.includes(source.side as MaterialRenderFace)) {
     graph.side = source.side as MaterialRenderFace;
   }
+  if (source.colorVersion === 1) graph.colorVersion = 1;
   if (source.shadingModel === "lit") graph.shadingModel = "lit";
   if (isRecord(source.subgraph) && Array.isArray(source.subgraph.outputs)) {
     graph.params = graph.params.map((p) => ({
@@ -865,6 +868,7 @@ export function serializeShaderGraph(
   if (graph.side !== undefined) {
     out.side = graph.side;
   }
+  if (graph.colorVersion === 1) out.colorVersion = 1;
   if (graph.shadingModel === "lit") out.shadingModel = "lit";
   if (graph.subgraph) out.subgraph = graph.subgraph;
   if (graph.builtin) out.builtin = graph.builtin;
