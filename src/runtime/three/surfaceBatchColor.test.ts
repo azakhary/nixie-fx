@@ -21,7 +21,7 @@ describe("batched versioned graph color", () => {
       const graph = normalizeShaderGraph({
         id: "modern",
         colorVersion: 1,
-        blend,
+        blend: "normal",
         nodes: [{ id: "input", type: "particleColor", params: {} }],
         edges: [
           {
@@ -54,6 +54,8 @@ describe("batched versioned graph color", () => {
         materialGraphProvider: () => graph,
       });
       const material = resolution.material as ShaderMaterial;
+      // Hosts may override the render state; Three defines this macro from it.
+      material.premultipliedAlpha = blend === "premultiplied";
       const mesh = new Mesh(new PlaneGeometry(), material);
       const program = surfaceProgram(mesh);
       expect(program).not.toBeNull();

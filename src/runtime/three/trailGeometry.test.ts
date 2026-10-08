@@ -154,6 +154,7 @@ describe("retained Three trail geometry", () => {
       rotation: [0, 0, 0],
       color: new Color(1, 0.5, 0),
       shaderColor: [1, 0.5, 0],
+      lightColor: [1, 0.5, 0, 1],
       trailColor: [1, 0.5, 0, 1],
       alpha: 1,
       alignmentAxis: new Vector3(0, 1, 0),
