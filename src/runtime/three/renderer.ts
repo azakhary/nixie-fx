@@ -1,4 +1,9 @@
-import { sampleIndependentTrailColor } from "../trailColor";
+import {
+  drawThreeTrailView,
+  clearThreeTrailView,
+  pruneThreeTrailPoints,
+  type ThreeTrailView,
+} from "./trailGeometry";
 import {
   PARTICLE_ALIGNMENT_AXIS,
   PARTICLE_FRONT_AXIS,
@@ -10,7 +15,6 @@ import {
   Color,
   DoubleSide,
   Euler,
-  Float32BufferAttribute,
   Group,
   Matrix4,
   Mesh,
@@ -27,7 +31,7 @@ import {
   type Object3D,
   type Scene,
 } from "three";
-import type { Vec3, Vec4 } from "../../engine/math";
+import type { Vec3 } from "../../engine/math";
 import {
   PARTICLE_INSTANCE_STRIDE,
   PARTICLE_RUNTIME_VECTOR_STRIDE,
@@ -83,7 +87,6 @@ import {
 import {
   createThreeEmitterMaterial,
   createThreeTrailMaterial,
-  type ThreeEmitterMaterialResolution,
   emitterProceduralBillboardKey,
   emitterTexturePath,
   isThreeParticleMaterial,
@@ -130,7 +133,7 @@ interface ThreeEmitterDrawParameters {
   colorOverLifetimeGradient: ParticleColorGradientSettings | null;
 }
 
-interface ThreeEmitterView {
+interface ThreeEmitterView extends ThreeTrailView {
   meshes: Mesh[];
   instanced: ThreeInstancedBillboardView | null;
   particleOrder: Uint32Array;
@@ -139,13 +142,6 @@ interface ThreeEmitterView {
   ownedGeometry: BufferGeometry | null;
   pivotBoundsSize: Vec3;
   debugBounds: { min: Vec3; max: Vec3 };
-  trailMesh: Mesh;
-  trailGeometry: BufferGeometry;
-  trailMaterial: ThreeParticleMaterial;
-  trailResolution: ThreeEmitterMaterialResolution | null;
-  trailTextureFrames: ThreeTextureFrameSet | null;
-  trailHistories: Map<string, ThreeTrailHistory>;
-  trailEmitterPosition: Vec3;
   ownedTextures: Texture[];
   textureFrames: ThreeTextureFrameSet;
   materialFixed: MaterialFixedDescriptor | null;
@@ -167,24 +163,6 @@ interface ThreeViewBuildContext {
     geometry: BufferGeometry;
     generation: number;
   } | null;
-}
-
-interface ThreeTrailPoint {
-  dynamicParams: [number, number, number, number] | null;
-  position: Vector3;
-  timeSeconds: number;
-  lifetimeSeconds: number;
-  distanceFromHead: number;
-  color: [number, number, number];
-  alpha: number;
-  width: number;
-  maxLength?: number;
-  seed: number;
-}
-
-interface ThreeTrailHistory {
-  points: ThreeTrailPoint[];
-  lastSeenFrame: number;
 }
 
 interface ParticleSample {
@@ -408,6 +386,9 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   seek(timeSeconds: number): void {
     if (this.destroyed) return;
     const target = Math.max(0, Number.isFinite(timeSeconds) ? timeSeconds : 0);
+    // A reset reuses particle seeds/timestamps; old trails must not join the
+    // new run or survive a backwards seek.
+    for (const view of this.emitterViews) if (view) clearThreeTrailView(view);
     this.timeSeconds = 0;
     this.runner.reset(this.effect, this.position, 0, this.seed);
     let cursor = 0;
@@ -865,7 +846,13 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       view.trailMesh.renderOrder =
         this.renderOrder +
         (this.emitterLayerRanks[emitterIndex] ?? emitterIndex);
-      drawThreeTrailView(view, emitter, this.camera, timeSeconds);
+      drawThreeTrailView(
+        view,
+        emitter,
+        this.camera,
+        timeSeconds,
+        this.position,
+      );
       trailDrawCalls = view.trailMesh.visible ? 1 : 0;
     } else {
       clearThreeTrailView(view);
@@ -2130,248 +2117,6 @@ function applyThreeLocalSpaceTrailShift(
   previous[0] = emitterPosition[0];
   previous[1] = emitterPosition[1];
   previous[2] = emitterPosition[2];
-}
-
-function drawThreeTrailView(
-  view: ThreeEmitterView,
-  emitter: ParticleEmitterDefinition,
-  camera: Camera,
-  timeSeconds: number,
-): void {
-  if (!emitter.modules.trails) {
-    clearThreeTrailView(view);
-    return;
-  }
-  const positions: number[] = [];
-  const colors: number[] = [];
-  const uvs: number[] = [];
-  const normals: number[] = [];
-  const dynamicParams: number[] = [];
-  const indices: number[] = [];
-  const settings = emitter.advanced.trails;
-  const trailColor: Vec4 = [1, 1, 1, 1];
-  const resolution = view.trailResolution;
-  const shader = view.trailMaterial instanceof ShaderMaterial;
-  if (
-    view.trailMaterial instanceof ShaderMaterial &&
-    view.trailMaterial.uniforms.uTime
-  ) {
-    view.trailMaterial.uniforms.uTime.value = timeSeconds;
-  }
-  if (
-    view.trailTextureFrames &&
-    !(view.trailMaterial instanceof ShaderMaterial)
-  ) {
-    applyThreeTextureFrame(
-      view.trailMaterial,
-      view.trailTextureFrames,
-      0,
-      resolution?.fixed ?? null,
-      timeSeconds,
-    );
-  }
-  const srgbColor = new Color();
-  for (const [key, history] of view.trailHistories) {
-    pruneThreeTrailPoints(history.points, undefined, timeSeconds);
-    if (history.points.length < 2) {
-      if (history.points.length === 0) view.trailHistories.delete(key);
-      continue;
-    }
-    const points = history.points;
-    const fallbackLength = Math.max(points[0]?.distanceFromHead ?? 1, 1);
-    const startVertex = positions.length / 3;
-    for (let i = 0; i < points.length; i++) {
-      const point = points[i]!;
-      const next = points[Math.min(i + 1, points.length - 1)] ?? point;
-      const prev = points[Math.max(i - 1, 0)] ?? point;
-      const maxLength = point.maxLength;
-      if (maxLength !== undefined && point.distanceFromHead > maxLength)
-        continue;
-      const trailT = clamp(
-        point.distanceFromHead / (maxLength ?? fallbackLength),
-        0,
-        1,
-      );
-      const ageFade =
-        1 -
-        clamp((timeSeconds - point.timeSeconds) / point.lifetimeSeconds, 0, 1);
-      let r = point.color[0];
-      let g = point.color[1];
-      let b = point.color[2];
-      let alpha = point.alpha;
-      if (!settings.inheritColor) {
-        const rgba = sampleIndependentTrailColor(
-          settings,
-          1 - ageFade,
-          trailT,
-          trailColor,
-        );
-        srgbColor.setRGB(
-          rgba[0],
-          rgba[1],
-          rgba[2],
-          resolution ? undefined : SRGBColorSpace,
-        );
-        r = srgbColor.r;
-        g = srgbColor.g;
-        b = srgbColor.b;
-        alpha = rgba[3];
-      } else if (settings.color) {
-        const rgb = sampleParticleGradientColor(settings.color, trailT);
-        srgbColor.setRGB(
-          rgb[0],
-          rgb[1],
-          rgb[2],
-          resolution ? undefined : SRGBColorSpace,
-        );
-        r = srgbColor.r;
-        g = srgbColor.g;
-        b = srgbColor.b;
-        alpha = sampleParticleGradientAlpha(settings.color, trailT);
-      }
-      if (resolution) {
-        if (!resolution.particleColorUsage.rgb) {
-          r = 1;
-          g = 1;
-          b = 1;
-        }
-        if (!resolution.particleColorUsage.alpha) alpha = 1;
-      }
-      if (resolution && !shader) {
-        const usage = resolution.particleColorUsage;
-        const fixed = resolution.fixed;
-        const tint = fixed?.tint ?? [1, 1, 1, 1];
-        const emissive = 1 + Math.max(0, fixed?.emissive ?? 0);
-        srgbColor.setRGB(
-          (usage.rgb ? r : 1) * tint[0]! * emissive,
-          (usage.rgb ? g : 1) * tint[1]! * emissive,
-          (usage.rgb ? b : 1) * tint[2]! * emissive,
-          SRGBColorSpace,
-        );
-        r = srgbColor.r;
-        g = srgbColor.g;
-        b = srgbColor.b;
-        alpha = (usage.alpha ? alpha : 1) * tint[3]! * (fixed?.opacity ?? 1);
-      }
-      alpha *= (1 - trailT) * ageFade;
-      const width =
-        point.width *
-        Math.max(
-          0,
-          sampleParticleScalarValue(
-            settings.widthOverTrail,
-            trailT,
-            point.seed,
-          ),
-        );
-      if (alpha <= 0.01 || width <= 0.0001) continue;
-      const dir = new Vector3().subVectors(next.position, prev.position);
-      if (dir.lengthSq() <= 0.0000001) dir.set(0, 1, 0);
-      dir.normalize();
-      const viewDir = new Vector3().subVectors(camera.position, point.position);
-      if (viewDir.lengthSq() <= 0.0000001) viewDir.set(0, 0, 1);
-      viewDir.normalize();
-      const side = new Vector3().crossVectors(dir, viewDir);
-      if (side.lengthSq() <= 0.0000001) side.copy(DEFAULT_UP);
-      side.normalize().multiplyScalar(width * 0.5);
-      positions.push(
-        point.position.x - side.x,
-        point.position.y - side.y,
-        point.position.z - side.z,
-        point.position.x + side.x,
-        point.position.y + side.y,
-        point.position.z + side.z,
-      );
-      colors.push(r, g, b, alpha, r, g, b, alpha);
-      if (resolution) {
-        const u =
-          settings.textureMode === "tile"
-            ? point.distanceFromHead
-            : point.distanceFromHead /
-              Math.max(points[0]!.distanceFromHead, 0.000001);
-        uvs.push(u, 0, u, 1);
-        if (point.dynamicParams)
-          dynamicParams.push(...point.dynamicParams, ...point.dynamicParams);
-        normals.push(
-          viewDir.x,
-          viewDir.y,
-          viewDir.z,
-          viewDir.x,
-          viewDir.y,
-          viewDir.z,
-        );
-      }
-    }
-    const vertexCount = positions.length / 3 - startVertex;
-    for (let i = 0; i < vertexCount / 2 - 1; i++) {
-      const a = startVertex + i * 2;
-      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-    }
-  }
-  if (positions.length === 0 || indices.length === 0) {
-    clearThreeTrailGeometry(view);
-    return;
-  }
-  view.trailGeometry.setAttribute(
-    "position",
-    new Float32BufferAttribute(positions, 3),
-  );
-  view.trailGeometry.setAttribute(
-    "color",
-    new Float32BufferAttribute(colors, 4),
-  );
-  if (resolution) {
-    view.trailGeometry.setAttribute(
-      "trailDynamicParams",
-      new Float32BufferAttribute(dynamicParams, 4),
-    );
-    view.trailGeometry.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
-    view.trailGeometry.setAttribute(
-      "normal",
-      new Float32BufferAttribute(normals, 3),
-    );
-  }
-  view.trailGeometry.setIndex(indices);
-  view.trailGeometry.computeBoundingSphere();
-  view.trailMesh.visible = true;
-}
-
-function clearThreeTrailView(view: ThreeEmitterView): void {
-  view.trailHistories.clear();
-  clearThreeTrailGeometry(view);
-}
-
-function clearThreeTrailGeometry(view: ThreeEmitterView): void {
-  view.trailMesh.visible = false;
-  view.trailGeometry.setIndex([]);
-  view.trailGeometry.deleteAttribute("position");
-  view.trailGeometry.deleteAttribute("color");
-  view.trailGeometry.deleteAttribute("trailDynamicParams");
-  view.trailGeometry.deleteAttribute("uv");
-  view.trailGeometry.deleteAttribute("normal");
-}
-
-function pruneThreeTrailPoints(
-  points: ThreeTrailPoint[],
-  maxLength: number | undefined,
-  timeSeconds: number,
-): void {
-  let distanceFromHead = 0;
-  for (let i = points.length - 1; i >= 0; i--) {
-    const point = points[i]!;
-    const next = points[i + 1];
-    if (next) distanceFromHead += point.position.distanceTo(next.position);
-    point.distanceFromHead = distanceFromHead;
-  }
-  while (
-    points.length > 0 &&
-    ((maxLength !== undefined &&
-      points[0]!.distanceFromHead > maxLength &&
-      points.length > 1) ||
-      timeSeconds - points[0]!.timeSeconds > points[0]!.lifetimeSeconds)
-  ) {
-    points.shift();
-  }
 }
 
 function textureUniformValue(
