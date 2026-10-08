@@ -664,9 +664,9 @@ describe("vfx export writer", () => {
     ).toBe(0.6);
   });
 
-  it("exports material asset refs from a custom materials folder", async () => {
+  it("exports material asset refs from any folder in the asset root", async () => {
     const projectRoot = createTempProject();
-    writeJson(resolve(projectRoot, "assets/fx-materials/gvidon.material"), {
+    writeJson(resolve(projectRoot, "assets/Effects/Fire/gvidon.material"), {
       id: "M_CustomFolder",
       name: "Custom Folder Material",
       blend: "normal",
@@ -693,7 +693,6 @@ describe("vfx export writer", () => {
       effectDataPath: "particle-data/effects",
       assetRootPath: "assets",
       outputPath: "out/vfx",
-      materialsFolder: "fx-materials",
       generatedAt: "2026-06-15T00:00:00.000Z",
     });
 
@@ -701,8 +700,63 @@ describe("vfx export writer", () => {
     expect(result.manifest?.assets).toContainEqual({
       id: "M_CustomFolder",
       type: "material",
-      path: "fx-materials/gvidon.material",
+      path: "Effects/Fire/gvidon.material",
     });
+  });
+
+  it("ignores exported bundle copies of materials inside the asset root", async () => {
+    const projectRoot = createTempProject();
+    const material = (name: string) => ({
+      id: "M_Fire",
+      name,
+      blend: "normal",
+      nodes: [],
+      edges: [],
+      params: [],
+      outputs: {},
+    });
+    writeJson(
+      resolve(projectRoot, "Effects/Fire/fire.material"),
+      material("Fresh"),
+    );
+    // An older export copied back into the project, outside the current output.
+    writeJson(resolve(projectRoot, "old-out/vfx/manifest.json"), {
+      kind: "vfx-manifest",
+      effects: [],
+      assets: [],
+    });
+    writeJson(
+      resolve(projectRoot, "old-out/vfx/Effects/Fire/fire.material"),
+      material("Stale"),
+    );
+    writeJson(resolve(projectRoot, "effects/fire.json"), {
+      id: "fire",
+      name: "Fire",
+      emitters: [
+        {
+          id: "emitter",
+          render: { material: { id: "inst-fire", shaderId: "M_Fire" } },
+        },
+      ],
+    });
+
+    const result = await writeVfxExportFromProject({
+      projectRoot,
+      effectDataPath: "effects",
+      assetRootPath: ".",
+      outputPath: "out/vfx",
+      generatedAt: "2026-06-15T00:00:00.000Z",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.assets).toContainEqual({
+      id: "M_Fire",
+      type: "material",
+      path: "Effects/Fire/fire.material",
+    });
+    expect(
+      readJson(resolve(projectRoot, "out/vfx/Effects/Fire/fire.material")),
+    ).toMatchObject({ name: "Fresh" });
   });
 
   it("blocks project export when an effect references a missing material graph", async () => {

@@ -47,7 +47,6 @@ import type {
 const MANIFEST_FILE = "manifest.json";
 const DIAGNOSTICS_FILE = "export-diagnostics.json";
 const EFFECTS_DIR = "effects";
-const DEFAULT_MATERIALS_DIR = "materials";
 const MATERIAL_EXTENSION = ".material";
 
 export interface WriteVfxExportFromProjectOptions {
@@ -57,7 +56,6 @@ export interface WriteVfxExportFromProjectOptions {
   assetRootPath?: string;
   outputPath: string;
   allowExternalOutput?: boolean;
-  materialsFolder?: string;
   generatedAt?: string;
 }
 
@@ -116,9 +114,6 @@ export async function writeVfxExportWithIo(
     effectsRoot.absolutePath,
     assetRoot.absolutePath,
   ]);
-  const materialsFolder = normalizeMaterialFolder(
-    options.materialsFolder ?? DEFAULT_MATERIALS_DIR,
-  );
   const assetRedirects = await readExportAssetRedirectMap(
     assetRoot.absolutePath,
     io,
@@ -133,12 +128,9 @@ export async function writeVfxExportWithIo(
     }),
     options.effectFile,
   );
-  const materialContext = await listProjectMaterialContext(
-    assetRoot,
-    materialsFolder,
-    io,
-    { excludeRoots: [outputRoot.absolutePath] },
-  );
+  const materialContext = await listProjectMaterialContext(assetRoot, io, {
+    excludeRoots: [outputRoot.absolutePath],
+  });
   const compileInputs: CompileVfxExportInput[] = [];
   for (const file of sourceFiles) {
     const effect = JSON.parse(
@@ -160,7 +152,6 @@ export async function writeVfxExportWithIo(
     await validateCompiledAssets(
       compiled.effects,
       assetRoot,
-      materialsFolder,
       assetRedirects,
       io,
     ),
@@ -783,13 +774,14 @@ function selectSourceEffectFiles(
   return [selected];
 }
 
+// Materials and subgraphs are ordinary project assets: they can live in any
+// folder under the asset root, so discovery walks the whole asset root.
 async function listProjectMaterialContext(
   assetRoot: ProjectRelativeDirectory,
-  materialsFolder: string,
   io: ExportIo,
   options: { excludeRoots?: readonly string[] } = {},
 ): Promise<ProjectMaterialContext> {
-  const root = resolve(assetRoot.absolutePath, materialsFolder);
+  const root = assetRoot.absolutePath;
   const excluded = (options.excludeRoots ?? []).map((path) => resolve(path));
   const graphs: Record<string, ShaderGraph> = {};
   const assetPaths: Record<string, string> = {};
@@ -811,6 +803,9 @@ async function listProjectMaterialContext(
           continue;
         }
         if (await isNestedProjectDirectory(absolutePath, io)) continue;
+        // Exported bundles (this output or an older copy of it) hold compiled
+        // copies of the same graph ids; only the authored sources count.
+        if (await readExistingExportManifest(absolutePath, io)) continue;
         await walk(absolutePath);
         continue;
       }
@@ -890,7 +885,6 @@ function createCompiledEffectPath(sourceRelativePath: string): string {
 async function validateCompiledAssets(
   effects: readonly VfxCompiledEffect[],
   assetRoot: ProjectRelativeDirectory,
-  materialsFolder: string,
   redirects: VfxAssetRedirectMap,
   io: ExportIo,
 ): Promise<VfxValidationResult> {
@@ -902,7 +896,6 @@ async function validateCompiledAssets(
       const error = await validateCompiledAsset(
         asset,
         assetRoot,
-        materialsFolder,
         redirects,
         io,
       );
@@ -932,7 +925,6 @@ async function validateCompiledAssets(
 async function validateCompiledAsset(
   asset: VfxAssetRef,
   assetRoot: ProjectRelativeDirectory,
-  materialsFolder: string,
   redirects: VfxAssetRedirectMap,
   io: ExportIo,
 ): Promise<string | null> {
@@ -964,9 +956,9 @@ async function validateCompiledAsset(
     return `Missing raw mesh asset "${asset.path}" in asset root "${assetRoot.relativePath}".`;
   }
 
-  const relativePath = validateMaterialAssetPath(asset.path, materialsFolder);
+  const relativePath = validateMaterialAssetPath(asset.path);
   if (!relativePath) {
-    return `Material asset path "${asset.path}" must be a .material file under "${materialsFolder}/".`;
+    return `Material asset path "${asset.path}" must be a .material file in the asset root.`;
   }
   const target = resolve(assetRoot.absolutePath, relativePath);
   assertPathInside(
@@ -978,30 +970,17 @@ async function validateCompiledAsset(
   return `Missing material asset "${asset.path}" in asset root "${assetRoot.relativePath}".`;
 }
 
-function validateMaterialAssetPath(
-  path: string,
-  materialsFolder: string,
-): string | null {
+function validateMaterialAssetPath(path: string): string | null {
   try {
     const relativePath = normalizeSafeProjectRelativePath(
       path,
       "Material asset path",
     );
-    const prefix = `${materialsFolder.replace(/\/+$/g, "")}/`;
-    if (!relativePath.startsWith(prefix)) return null;
     if (extname(relativePath).toLowerCase() !== MATERIAL_EXTENSION) return null;
     return relativePath;
   } catch {
     return null;
   }
-}
-
-function normalizeMaterialFolder(rawPath: string): string {
-  const relativePath = normalizeSafeProjectRelativePath(
-    rawPath,
-    "Materials folder",
-  );
-  return relativePath.replace(/\/+$/g, "");
 }
 
 async function readExportAssetRedirectMap(
