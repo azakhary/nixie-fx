@@ -263,6 +263,22 @@ render time, so even a zero axis can safely expand again. Billboard facing still
 follows the selected alignment/facing mode. Trail space is controlled separately
 by the Trails module.
 
+### Trails attached to moving objects
+
+History trails connect successive positions of the same particle. For a moving
+attachment, use a local-space carrier particle and move the effect origin with
+`setTransform({ position })`. With `trails.worldSpace: true`, previously sampled
+trail points stay behind when the effect translates. With it disabled, history
+follows the emitter translation. Sample the host's attachment before advancing
+the VFX renderer each frame.
+
+`restart()` and `seek()` clear the previous trail history so repeated playback
+does not connect unrelated paths. Seeking the particle simulation alone cannot
+reconstruct a moving host attachment's past path: for a trail preview, replay the
+attachment transforms and effect updates together from time zero. Effect-root
+rotation/scale and ancestor transforms still follow the normal renderer-root
+semantics; this is not a full world-space skeletal binding API.
+
 ## Other engines
 
 The export format is engine-neutral JSON: `manifest.json` plus per-effect
