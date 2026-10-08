@@ -1,6 +1,12 @@
 name: Publish Package
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
   push:
     tags:
       - "v*"
@@ -19,6 +25,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up Node.js for npm Trusted Publishing
         uses: actions/setup-node@v7
@@ -37,7 +45,9 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Verify release tag matches package version
-        run: node scripts/verify-release-tag.mjs "$GITHUB_REF_NAME"
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: node scripts/verify-release-tag.mjs "$RELEASE_TAG"
 
       - name: Check source and package build
         run: npm run check
