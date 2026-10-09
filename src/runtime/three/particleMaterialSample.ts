@@ -22,7 +22,11 @@ import {
 
 import type { ParticleSample } from "./rendererState";
 export function materialSamplesTextureAlpha(
-  material: MeshBasicMaterial | MeshStandardMaterial,
+  material:
+    | MeshBasicMaterial
+    | MeshStandardMaterial
+    | import("three/webgpu").MeshBasicNodeMaterial
+    | import("three/webgpu").MeshStandardNodeMaterial,
   emitter: ParticleEmitterDefinition,
 ): boolean {
   return (

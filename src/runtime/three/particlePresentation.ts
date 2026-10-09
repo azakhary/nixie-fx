@@ -15,7 +15,7 @@ import {
   materialBlendOverridesEmitter,
   resolveEffectiveParticleBlend,
 } from "../schema/materials";
-import { ThreeInstancedBillboardView } from "./instancedBillboard";
+import type { ThreeVfxInstancedView } from "./renderAdapter";
 import {
   isThreeParticleMaterial,
   threeBlendingForEffectiveBlend,
@@ -212,7 +212,7 @@ export class ThreeParticlePresentation {
 
   /** Returns the particle's squared world distance to the camera. */
   applySampleToInstanced(
-    instanced: ThreeInstancedBillboardView,
+    instanced: ThreeVfxInstancedView,
     sample: ParticleSample,
     view: ThreeEmitterView,
     emitter: ParticleEmitterDefinition,
@@ -237,6 +237,8 @@ export class ThreeParticlePresentation {
       sample.color,
       sample.alpha,
       distanceSquared,
+      sample,
+      emitter,
     );
     return distanceSquared;
   }

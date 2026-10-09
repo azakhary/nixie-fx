@@ -16,7 +16,7 @@ import {
 } from "../../engine/particles";
 import type { MaterialFixedDescriptor } from "../materials/artifact";
 import { type MaterialBlend } from "../schema/materials";
-import { ThreeInstancedBillboardView } from "./instancedBillboard";
+import type { ThreeVfxInstancedView } from "./renderAdapter";
 import { type ThreeParticleMaterial } from "./materialAdapter";
 import { type ThreeTextureFrameSet } from "./textureFrames";
 import { type ThreeTrailView } from "./trailGeometry";
@@ -37,7 +37,7 @@ export interface ThreeEmitterDrawParameters {
 
 export interface ThreeEmitterView extends ThreeTrailView {
   meshes: Mesh[];
-  instanced: ThreeInstancedBillboardView | null;
+  instanced: ThreeVfxInstancedView | null;
   particleOrder: Uint32Array;
   material: ThreeParticleMaterial;
   geometry: BufferGeometry;

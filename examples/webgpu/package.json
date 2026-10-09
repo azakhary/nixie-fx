@@ -1,0 +1,18 @@
+{
+  "name": "nixie-fx-webgpu-review",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 8085 --strictPort",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "nixie-fx": "0.1.20",
+    "three": "0.184.0"
+  },
+  "devDependencies": {
+    "vite": "^6.2.0",
+    "@types/three": "0.184.1",
+    "typescript": "~5.7.3"
+  }
+}

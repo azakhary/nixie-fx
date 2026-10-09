@@ -36,137 +36,177 @@ export function createEmitterView(
   options: ThreeVfxEffectInstanceOptions,
   context: ThreeViewBuildContext,
 ): ThreeEmitterView {
-  const meshAssetRender =
-    emitter.mode === "mesh" && emitter.mesh.renderMode === "meshAsset";
-  const meshAsset = meshAssetRender ? emitter.mesh.asset : null;
-  // A host-injected render geometry overrides the authored asset — and also
-  // works with no authored asset at all (host-only geometry).
-  const meshGeometry = meshAssetRender
-    ? (context.renderGeometryOverride?.geometry ??
-      (meshAsset ? options.meshProvider?.getMeshGeometry(meshAsset) : null))
-    : null;
-  const geometry = meshGeometry ?? BASE_QUAD_GEOMETRY;
-  const ownedGeometry =
-    meshAssetRender &&
-    (emitter.mesh.flipWinding || emitter.mesh.recomputeNormals)
-      ? geometry.clone()
+  const cleanup: Array<() => void> = [];
+  try {
+    const meshAssetRender =
+      emitter.mode === "mesh" && emitter.mesh.renderMode === "meshAsset";
+    const meshAsset = meshAssetRender ? emitter.mesh.asset : null;
+    // A host-injected render geometry overrides the authored asset — and also
+    // works with no authored asset at all (host-only geometry).
+    const meshGeometry = meshAssetRender
+      ? (context.renderGeometryOverride?.geometry ??
+        (meshAsset ? options.meshProvider?.getMeshGeometry(meshAsset) : null))
       : null;
-  const viewGeometry = ownedGeometry ?? geometry;
-  if (ownedGeometry && emitter.mesh.flipWinding) {
-    reverseGeometryWinding(ownedGeometry);
-  }
-  if (ownedGeometry && emitter.mesh.recomputeNormals) {
-    ownedGeometry.computeVertexNormals();
-  }
-  const pivotBoundsSize = geometryBoundsSize(viewGeometry);
-  const debugBounds = geometryDebugBounds(viewGeometry);
-  // A host material (ThreeVfxMaterialProvider.getParticleMaterial) replaces
-  // the whole built-in surface pipeline for this emitter: no texture frames,
-  // no material graph, no instanced fast path — the host owns the look.
-  const providedMaterial =
-    options.materialProvider?.getParticleMaterial?.(
-      context.effect,
-      emitter.id,
-    ) ?? null;
-  const hostMaterial =
-    providedMaterial && isThreeParticleMaterial(providedMaterial)
-      ? providedMaterial
-      : null;
-  const material = createThreeEmitterMaterial(emitter, options);
-  if (hostMaterial) material.material.dispose();
-  const sourceMap = hostMaterial
-    ? null
-    : material.material instanceof ShaderMaterial
-      ? textureUniformValue(material.material, "uTexture")
-      : material.material.map;
-  const sourceAlphaMap =
-    hostMaterial || material.material instanceof ShaderMaterial
-      ? null
-      : material.material.alphaMap;
-  const textureFrames = createThreeTextureFrameSet(
-    sourceMap,
-    sourceAlphaMap,
-    emitter,
-    hostMaterial ? null : material.fixed,
-  );
-  const instanced =
-    !hostMaterial && canUseInstancedBillboard(emitter, sourceMap)
-      ? new ThreeInstancedBillboardView(
-          viewGeometry,
-          sourceMap!,
-          emitter.maxParticles,
-          emitter,
-        )
-      : null;
-  const trailGeometry = new BufferGeometry();
-  const trailResolution = createThreeTrailMaterial(emitter, options);
-  const trailMaterial =
-    trailResolution?.material ??
-    new MeshBasicMaterial({
-      transparent: true,
-      vertexColors: true,
-      depthTest: emitter.render.depthTest,
-      depthWrite: resolveParticleDepthWrite(emitter.render),
-      blending:
-        emitter.render.blend === "additive" ? AdditiveBlending : NormalBlending,
-      premultipliedAlpha: emitter.render.blend === "premultiplied",
-      side: DoubleSide,
+    const geometry = meshGeometry ?? BASE_QUAD_GEOMETRY;
+    const ownedGeometry =
+      meshAssetRender &&
+      (emitter.mesh.flipWinding || emitter.mesh.recomputeNormals)
+        ? geometry.clone()
+        : null;
+    if (ownedGeometry) cleanup.push(() => ownedGeometry.dispose());
+    const viewGeometry = ownedGeometry ?? geometry;
+    if (ownedGeometry && emitter.mesh.flipWinding) {
+      reverseGeometryWinding(ownedGeometry);
+    }
+    if (ownedGeometry && emitter.mesh.recomputeNormals) {
+      ownedGeometry.computeVertexNormals();
+    }
+    const pivotBoundsSize = geometryBoundsSize(viewGeometry);
+    const debugBounds = geometryDebugBounds(viewGeometry);
+    // A host material (ThreeVfxMaterialProvider.getParticleMaterial) replaces
+    // the whole built-in surface pipeline for this emitter: no texture frames,
+    // no material graph, no instanced fast path — the host owns the look.
+    const providedMaterial =
+      options.materialProvider?.getParticleMaterial?.(
+        context.effect,
+        emitter.id,
+      ) ?? null;
+    if (options.renderAdapter && providedMaterial instanceof ShaderMaterial) {
+      throw new Error(
+        `Emitter "${emitter.id}": host ShaderMaterial uses GLSL. Supply a compatible node material or select legacy WebGL.`,
+      );
+    }
+    const hostMaterial =
+      providedMaterial && isThreeParticleMaterial(providedMaterial)
+        ? providedMaterial
+        : null;
+    const material = options.renderAdapter
+      ? options.renderAdapter.createMaterial(emitter, options, false)
+      : createThreeEmitterMaterial(emitter, options);
+    cleanup.push(() => {
+      material.material.dispose();
+      for (const texture of material.ownedTextures) texture.dispose();
     });
-  const trailTextureFrames =
-    trailResolution && !(trailMaterial instanceof ShaderMaterial)
-      ? createThreeTextureFrameSet(
-          trailMaterial.map,
-          trailMaterial.alphaMap,
-          {
-            ...emitter,
-            modules: { ...emitter.modules, textureSheetAnimation: false },
-          },
-          trailResolution.fixed,
-        )
-      : null;
-  const trailMesh = new Mesh(trailGeometry, trailMaterial);
-  trailMesh.frustumCulled = false;
-  trailMesh.visible = false;
-  return {
-    key: emitterViewKey(emitter, hostMaterial ? "host" : material.key),
-    staticKey: emitterStaticViewKey(emitter, options, context),
-    meshes: [],
-    instanced,
-    particleOrder: new Uint32Array(Math.max(1, emitter.maxParticles)),
-    geometry: viewGeometry,
-    ownedGeometry,
-    pivotBoundsSize,
-    debugBounds,
-    trailMesh,
-    trailGeometry,
-    trailMaterial,
-    trailResolution,
-    trailTextureFrames,
-    trailHistories: new Map(),
-    trailEmitterPosition: [0, 0, 0],
-    material: hostMaterial ?? material.material,
-    ownedTextures: [
-      ...material.ownedTextures,
-      ...textureFrames.ownedTextures,
-      ...(trailResolution?.ownedTextures ?? []),
-      ...(trailTextureFrames?.ownedTextures ?? []),
-    ],
-    textureFrames,
-    materialFixed: hostMaterial ? null : material.fixed,
-    materialParticleColorUsage: hostMaterial
-      ? { rgb: true, alpha: true }
-      : material.particleColorUsage,
-    materialOpacityIsConstantOne: hostMaterial
-      ? false
-      : material.opacityIsConstantOne,
-    materialBlend: hostMaterial ? null : material.materialBlend,
-    missingMaterialRef: hostMaterial ? null : material.missingMaterialRef,
-    unsupportedFeatures: [
-      ...material.unsupportedFeatures,
-      ...(trailResolution?.unsupportedFeatures ?? []),
-    ],
-    hostMaterial: hostMaterial !== null,
-  };
+    if (hostMaterial) material.material.dispose();
+    const sourceMap = hostMaterial
+      ? null
+      : material.material instanceof ShaderMaterial
+        ? textureUniformValue(material.material, "uTexture")
+        : material.material.map;
+    const sourceAlphaMap =
+      hostMaterial || material.material instanceof ShaderMaterial
+        ? null
+        : material.material.alphaMap;
+    const textureFrames = createThreeTextureFrameSet(
+      sourceMap,
+      sourceAlphaMap,
+      emitter,
+      hostMaterial ? null : material.fixed,
+    );
+    cleanup.push(() => {
+      for (const texture of textureFrames.ownedTextures) texture.dispose();
+    });
+    const instanced =
+      options.renderAdapter && !hostMaterial
+        ? options.renderAdapter.createInstances(viewGeometry, material, emitter)
+        : !hostMaterial && canUseInstancedBillboard(emitter, sourceMap)
+          ? new ThreeInstancedBillboardView(
+              viewGeometry,
+              sourceMap!,
+              emitter.maxParticles,
+              emitter,
+            )
+          : null;
+    if (instanced) cleanup.push(() => instanced.dispose());
+    const trailGeometry = new BufferGeometry();
+    cleanup.push(() => trailGeometry.dispose());
+    const trailResolution = options.renderAdapter
+      ? options.renderAdapter.createMaterial(emitter, options, true)
+      : createThreeTrailMaterial(emitter, options);
+    if (trailResolution)
+      cleanup.push(() => {
+        trailResolution.material.dispose();
+        for (const texture of trailResolution.ownedTextures) texture.dispose();
+      });
+    const trailMaterial =
+      trailResolution?.material ??
+      new MeshBasicMaterial({
+        transparent: true,
+        vertexColors: true,
+        depthTest: emitter.render.depthTest,
+        depthWrite: resolveParticleDepthWrite(emitter.render),
+        blending:
+          emitter.render.blend === "additive"
+            ? AdditiveBlending
+            : NormalBlending,
+        premultipliedAlpha: emitter.render.blend === "premultiplied",
+        side: DoubleSide,
+      });
+    const trailTextureFrames =
+      trailResolution && !(trailMaterial instanceof ShaderMaterial)
+        ? createThreeTextureFrameSet(
+            trailMaterial.map,
+            trailMaterial.alphaMap,
+            {
+              ...emitter,
+              modules: { ...emitter.modules, textureSheetAnimation: false },
+            },
+            trailResolution.fixed,
+          )
+        : null;
+    if (!trailResolution) cleanup.push(() => trailMaterial.dispose());
+    if (trailTextureFrames)
+      cleanup.push(() => {
+        for (const texture of trailTextureFrames.ownedTextures)
+          texture.dispose();
+      });
+    const trailMesh = new Mesh(trailGeometry, trailMaterial);
+    trailMesh.frustumCulled = false;
+    trailMesh.visible = false;
+    return {
+      key: emitterViewKey(emitter, hostMaterial ? "host" : material.key),
+      staticKey: emitterStaticViewKey(emitter, options, context),
+      meshes: [],
+      instanced,
+      particleOrder: new Uint32Array(Math.max(1, emitter.maxParticles)),
+      geometry: viewGeometry,
+      ownedGeometry,
+      pivotBoundsSize,
+      debugBounds,
+      trailMesh,
+      trailGeometry,
+      trailMaterial,
+      trailResolution,
+      trailTextureFrames,
+      trailHistories: new Map(),
+      trailEmitterPosition: [0, 0, 0],
+      material: hostMaterial ?? material.material,
+      ownedTextures: [
+        ...material.ownedTextures,
+        ...textureFrames.ownedTextures,
+        ...(trailResolution?.ownedTextures ?? []),
+        ...(trailTextureFrames?.ownedTextures ?? []),
+      ],
+      textureFrames,
+      materialFixed: hostMaterial ? null : material.fixed,
+      materialParticleColorUsage: hostMaterial
+        ? { rgb: true, alpha: true }
+        : material.particleColorUsage,
+      materialOpacityIsConstantOne: hostMaterial
+        ? false
+        : material.opacityIsConstantOne,
+      materialBlend: hostMaterial ? null : material.materialBlend,
+      missingMaterialRef: hostMaterial ? null : material.missingMaterialRef,
+      unsupportedFeatures: [
+        ...material.unsupportedFeatures,
+        ...(trailResolution?.unsupportedFeatures ?? []),
+      ],
+      hostMaterial: hostMaterial !== null,
+    };
+  } catch (error) {
+    for (const release of cleanup.reverse()) release();
+    throw error;
+  }
 }
 
 export function textureUniformValue(

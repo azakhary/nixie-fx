@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>NixieFX WebGPU comparison</title>
+    <style>
+      body {
+        margin: 0;
+        background: #111820;
+        color: #e6edf4;
+        font: 14px system-ui;
+      }
+      header,
+      aside {
+        padding: 14px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0;
+      }
+      button,
+      select,
+      input {
+        font: inherit;
+        background: #253646;
+        color: inherit;
+        border: 1px solid #668095;
+        padding: 5px;
+        border-radius: 4px;
+      }
+      #view {
+        height: 62vh;
+        min-height: 280px;
+        position: relative;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      #status {
+        padding: 10px;
+        background: #263644;
+      }
+      #error {
+        color: #ffc1b8;
+        white-space: pre-wrap;
+      }
+      pre {
+        white-space: pre-wrap;
+        margin: 14px;
+      }
+      label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      input[type="number"] {
+        width: 85px;
+      }
+      #report {
+        max-height: 35vh;
+        overflow: auto;
+      }
+      summary {
+        cursor: pointer;
+      }
+      details {
+        padding: 14px;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible {
+        outline: 2px solid #55e1db;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>NixieFX · same exported effect</h1>
+      <label
+        >Implementation<select id="backend">
+          <option value="webgl">Legacy WebGL</option>
+          <option value="webgpu">WebGPU</option>
+          <option value="fallback">Three WebGL2 fallback (forced)</option>
+        </select></label
+      ><label>Effect<select id="effect"></select></label
+      ><button id="retry">Retry</button
+      ><button id="legacy">Use legacy WebGL</button>
+    </header>
+    <div id="status" role="status">Loading exported bundle…</div>
+    <pre id="error" role="alert"></pre>
+    <div id="view"></div>
+    <aside>
+      <button id="pause">Pause</button><button id="restart">Restart</button
+      ><label>Seed<input id="seed" type="number" value="1234" /></label
+      ><label
+        >Time<input
+          id="seek"
+          type="range"
+          min="0"
+          max="6"
+          step="0.0166666667"
+          value="0" /></label
+      ><button id="checkpoint">Checkpoint 1.5s</button
+      ><label
+        >VFX lights<select id="budget">
+          <option>0</option>
+          <option selected>2</option>
+          <option>4</option>
+        </select></label
+      ><label
+        >Instances<select id="instances">
+          <option selected>1</option>
+          <option>3</option>
+        </select></label
+      ><label><input id="bloom" type="checkbox" />Bloom</label
+      ><label>Tint<input id="tint" type="color" value="#3399ff" /></label
+      ><button id="measure">Measure 30 seconds</button>
+    </aside>
+    <pre id="stats"></pre>
+    <pre id="report"></pre>
+    <details>
+      <summary>Recovery demonstrations (injected)</summary>
+      <p>
+        These exercise the same error and cleanup path without claiming an
+        actual driver/device failure.
+      </p>
+      <button id="initfail">Inject initialization failure</button
+      ><button id="loss">Inject device-loss notification</button>
+    </details>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

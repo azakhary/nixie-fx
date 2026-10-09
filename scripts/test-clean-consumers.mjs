@@ -150,6 +150,13 @@ import {
   type ThreeVfxRendererOptions,
 } from "nixie-fx/three";
 
+import { createThreeNodeAdapter, createThreeWebGpuRenderer, beginThreeWebGpuFrame, disposeThreeWebGpuRenderer, ThreeNodeRenderPipeline } from "nixie-fx/three/webgpu";
+void createThreeWebGpuRenderer;
+void beginThreeWebGpuFrame;
+void disposeThreeWebGpuRenderer;
+void ThreeNodeRenderPipeline;
+const nodeOptions: ThreeVfxRendererOptions = { camera: {} as Camera, renderAdapter: createThreeNodeAdapter() };
+void nodeOptions;
 declare const camera: Camera;
 declare const parent: Object3D;
 const options: ThreeVfxRendererOptions = { camera, parent };
@@ -164,6 +171,8 @@ void repairMirroredGeometryWinding;
 import { createRequire } from "node:module";
 import { ThreeVfxRenderer, ThreeVfxBatcher, ThreeSurfaceBatcher, repairMirroredGeometryWinding } from "nixie-fx/three";
 
+import { createThreeNodeAdapter, createThreeWebGpuRenderer, ThreeNodeRenderPipeline } from "nixie-fx/three/webgpu";
+if (typeof createThreeNodeAdapter !== "function" || typeof createThreeWebGpuRenderer !== "function" || typeof ThreeNodeRenderPipeline !== "function") throw new Error("Node material public API is unavailable.");
 if (typeof ThreeSurfaceBatcher !== "function" || typeof ThreeVfxBatcher !== "function" || typeof ThreeVfxRenderer !== "function" || typeof repairMirroredGeometryWinding !== "function") {
   throw new Error("Three public API is unavailable.");
 }

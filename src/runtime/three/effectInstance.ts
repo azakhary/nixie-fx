@@ -168,8 +168,11 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       rotation: options.rotation,
       scale: options.scale,
     });
-    if (options.autoStart !== false) {
-      this.play();
+    try {
+      if (options.autoStart !== false) this.play();
+    } catch (error) {
+      this.destroy();
+      throw error;
     }
   }
 
@@ -574,8 +577,8 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       };
       const key = emitterStaticViewKey(emitter, this.options, context);
       if (this.emitterViews[i]?.staticKey === key) continue;
-      if (this.emitterViews[i]) destroyEmitterView(this.emitterViews[i]!);
       const view = createEmitterView(emitter, this.options, context);
+      if (this.emitterViews[i]) destroyEmitterView(this.emitterViews[i]!);
       this.emitterViews[i] = view;
       if (view.instanced) this.root.add(view.instanced.mesh);
     }

@@ -1,0 +1,201 @@
+{
+  "id": "animated-surface",
+  "name": "Animated Surface",
+  "blend": "normal",
+  "nodes": [
+    {
+      "id": "tint",
+      "type": "param",
+      "inputs": {},
+      "params": {
+        "name": "Tint"
+      },
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "mask",
+      "type": "subgraph",
+      "inputs": {},
+      "params": {
+        "graph": {
+          "id": "radial-mask",
+          "name": "Reusable radial mask",
+          "colorVersion": 1,
+          "params": [],
+          "nodes": [
+            {
+              "id": "radial",
+              "type": "fresnel",
+              "params": {
+                "power": 2
+              },
+              "inputs": {},
+              "position": {
+                "x": 0,
+                "y": 0
+              }
+            }
+          ],
+          "edges": [],
+          "outputs": {},
+          "subgraph": {
+            "outputs": [
+              {
+                "id": "alpha",
+                "name": "Alpha",
+                "type": "float",
+                "nodeId": "radial",
+                "handle": "out"
+              }
+            ]
+          },
+          "blend": "normal"
+        },
+        "path": "materials/radial-mask.material"
+      },
+      "position": {
+        "x": 0,
+        "y": 240
+      }
+    },
+    {
+      "id": "time",
+      "type": "time",
+      "inputs": {},
+      "params": {},
+      "position": {
+        "x": 0,
+        "y": 480
+      }
+    },
+    {
+      "id": "wave",
+      "type": "sine",
+      "inputs": {
+        "in": "time-wave"
+      },
+      "params": {
+        "period": 2
+      },
+      "position": {
+        "x": 230,
+        "y": 480
+      }
+    },
+    {
+      "id": "glow",
+      "type": "multiply",
+      "inputs": {
+        "a": "wave-glow"
+      },
+      "params": {
+        "b": 0.5
+      },
+      "position": {
+        "x": 460,
+        "y": 480
+      }
+    },
+    {
+      "id": "emission",
+      "type": "multiply",
+      "inputs": {
+        "a": "glow-emission",
+        "b": "tint-emission"
+      },
+      "params": {},
+      "position": {
+        "x": 690,
+        "y": 280
+      }
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "inputs": {
+        "baseColor": "base",
+        "emissive": "emit",
+        "opacity": "opacity"
+      },
+      "params": {},
+      "position": {
+        "x": 930,
+        "y": 80
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "time-wave",
+      "source": "time",
+      "sourceHandle": "out",
+      "target": "wave",
+      "targetHandle": "in"
+    },
+    {
+      "id": "wave-glow",
+      "source": "wave",
+      "sourceHandle": "out",
+      "target": "glow",
+      "targetHandle": "a"
+    },
+    {
+      "id": "glow-emission",
+      "source": "glow",
+      "sourceHandle": "out",
+      "target": "emission",
+      "targetHandle": "a"
+    },
+    {
+      "id": "tint-emission",
+      "source": "tint",
+      "sourceHandle": "out",
+      "target": "emission",
+      "targetHandle": "b"
+    },
+    {
+      "id": "base",
+      "source": "tint",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "baseColor"
+    },
+    {
+      "id": "opacity",
+      "source": "mask",
+      "sourceHandle": "alpha",
+      "target": "output",
+      "targetHandle": "opacity"
+    },
+    {
+      "id": "emit",
+      "source": "emission",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "emissive"
+    }
+  ],
+  "params": [
+    {
+      "name": "Tint",
+      "type": "color",
+      "group": "Surface",
+      "default": [
+        0.2,
+        0.6,
+        1,
+        1
+      ]
+    }
+  ],
+  "outputs": {
+    "baseColor": "base",
+    "emissive": "emit",
+    "opacity": "opacity"
+  },
+  "side": "double",
+  "colorVersion": 1
+}

@@ -1,0 +1,67 @@
+{
+  "id": "atlas-surface",
+  "name": "Animated atlas and dynamic tint",
+  "colorVersion": 1,
+  "shadingModel": "unlit",
+  "blend": "normal",
+  "side": "double",
+  "params": [
+    {
+      "name": "MainTex",
+      "type": "texture2d",
+      "default": "frames.png"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "atlas",
+      "type": "particleSubUV",
+      "params": {
+        "texture": "frames.png",
+        "blend": false
+      },
+      "inputs": {}
+    },
+    {
+      "id": "rgba",
+      "type": "particleColor",
+      "params": {},
+      "inputs": {}
+    },
+    {
+      "id": "multiply",
+      "type": "multiply",
+      "params": {},
+      "inputs": {
+        "a": "a",
+        "b": "b"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "a",
+      "source": "atlas",
+      "sourceHandle": "out",
+      "target": "multiply",
+      "targetHandle": "a"
+    },
+    {
+      "id": "b",
+      "source": "rgba",
+      "sourceHandle": "out",
+      "target": "multiply",
+      "targetHandle": "b"
+    },
+    {
+      "id": "base",
+      "source": "multiply",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "baseColor"
+    }
+  ],
+  "outputs": {
+    "baseColor": "base"
+  }
+}

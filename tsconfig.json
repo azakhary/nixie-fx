@@ -20,7 +20,8 @@
       "nixie-fx/pixi": ["./src/pixi.ts"],
       "nixie-fx/three": ["./src/three.ts"],
       "nixie-fx/export": ["./src/export.ts"],
-      "nixie-fx/export/node": ["./src/export-node.ts"]
+      "nixie-fx/export/node": ["./src/export-node.ts"],
+      "nixie-fx/three/webgpu": ["./src/three-webgpu.ts"]
     },
     "strict": true,
     "noUnusedLocals": true,

@@ -1,0 +1,155 @@
+{
+  "id": "custom-trail",
+  "name": "Custom Trail",
+  "colorVersion": 1,
+  "shadingModel": "unlit",
+  "blend": "add",
+  "side": "double",
+  "params": [
+    {
+      "name": "Tint",
+      "type": "color",
+      "default": [
+        0.2,
+        0.6,
+        1,
+        1
+      ],
+      "scope": "per-material",
+      "group": "Surface"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "tint",
+      "type": "param",
+      "params": {
+        "name": "Tint"
+      },
+      "inputs": {},
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "mask",
+      "type": "fresnel",
+      "params": {
+        "power": 2
+      },
+      "inputs": {},
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "time",
+      "type": "time",
+      "params": {},
+      "inputs": {},
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "wave",
+      "type": "sine",
+      "params": {
+        "period": 2
+      },
+      "inputs": {
+        "in": "time-wave"
+      },
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "glow",
+      "type": "multiply",
+      "params": {
+        "b": 0.5
+      },
+      "inputs": {
+        "a": "wave-glow"
+      },
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "emission",
+      "type": "multiply",
+      "params": {},
+      "inputs": {
+        "a": "glow-emission",
+        "b": "tint-emission"
+      },
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "time-wave",
+      "source": "time",
+      "sourceHandle": "out",
+      "target": "wave",
+      "targetHandle": "in"
+    },
+    {
+      "id": "wave-glow",
+      "source": "wave",
+      "sourceHandle": "out",
+      "target": "glow",
+      "targetHandle": "a"
+    },
+    {
+      "id": "glow-emission",
+      "source": "glow",
+      "sourceHandle": "out",
+      "target": "emission",
+      "targetHandle": "a"
+    },
+    {
+      "id": "tint-emission",
+      "source": "tint",
+      "sourceHandle": "out",
+      "target": "emission",
+      "targetHandle": "b"
+    },
+    {
+      "id": "base",
+      "source": "tint",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "baseColor"
+    },
+    {
+      "id": "opacity",
+      "source": "mask",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "opacity"
+    },
+    {
+      "id": "emit",
+      "source": "emission",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "emissive"
+    }
+  ],
+  "outputs": {
+    "baseColor": "base",
+    "opacity": "opacity",
+    "emissive": "emit"
+  }
+}

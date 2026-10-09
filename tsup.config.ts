@@ -19,6 +19,7 @@ export default defineConfig([
       materials: "src/materials.ts",
       pixi: "src/pixi.ts",
       three: "src/three.ts",
+      "three-webgpu": "src/three-webgpu.ts",
       export: "src/export.ts",
       "export-node": "src/export-node.ts",
     },

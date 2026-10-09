@@ -1,0 +1,29 @@
+{
+  "id": "scene-read",
+  "name": "Scene diffuse read",
+  "colorVersion": 1,
+  "shadingModel": "unlit",
+  "blend": "normal",
+  "side": "double",
+  "params": [],
+  "nodes": [
+    {
+      "id": "illumination",
+      "type": "sceneDiffuseLighting",
+      "inputs": {},
+      "params": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "base",
+      "source": "illumination",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "baseColor"
+    }
+  ],
+  "outputs": {
+    "baseColor": "base"
+  }
+}

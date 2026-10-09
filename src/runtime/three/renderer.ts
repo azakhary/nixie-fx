@@ -57,6 +57,7 @@ export class ThreeVfxRenderer implements VfxRendererBackend<Object3D | Scene> {
     if (this.destroyed) throw new Error("ThreeVfxRenderer is destroyed.");
     const instance = new ThreeVfxEffectInstance({
       effect,
+      renderAdapter: this.options.renderAdapter,
       camera: this.camera,
       textureProvider: this.options.textureProvider,
       meshProvider: this.options.meshProvider,

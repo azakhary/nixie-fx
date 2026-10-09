@@ -1,0 +1,46 @@
+{
+  "id": "unsupported-feed",
+  "name": "Unsupported Particle Feed",
+  "colorVersion": 1,
+  "shadingModel": "unlit",
+  "blend": "normal",
+  "side": "double",
+  "params": [
+    {
+      "name": "Tint",
+      "type": "color",
+      "default": [
+        0.2,
+        0.6,
+        1,
+        1
+      ],
+      "scope": "per-material",
+      "group": "Surface"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "position",
+      "type": "particlePosition",
+      "params": {},
+      "inputs": {},
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "base",
+      "source": "position",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "baseColor"
+    }
+  ],
+  "outputs": {
+    "baseColor": "base"
+  }
+}

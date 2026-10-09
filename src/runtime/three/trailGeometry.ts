@@ -97,7 +97,9 @@ export function drawThreeTrailView(
   const settings = emitter.advanced.trails;
   const trailColor = buffers.trailColor;
   const resolution = view.trailResolution;
-  const shader = view.trailMaterial instanceof ShaderMaterial;
+  resolution?.updateTime?.(timeSeconds);
+  const shader =
+    view.trailMaterial instanceof ShaderMaterial || !!resolution?.updateTime;
   if (
     view.trailMaterial instanceof ShaderMaterial &&
     view.trailMaterial.uniforms.uTime

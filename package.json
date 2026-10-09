@@ -69,7 +69,11 @@
       "types": "./dist/export-node.d.ts",
       "import": "./dist/export-node.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./three/webgpu": {
+      "types": "./dist/three-webgpu.d.ts",
+      "import": "./dist/three-webgpu.js"
+    }
   },
   "scripts": {
     "build": "npm run clean && tsup",

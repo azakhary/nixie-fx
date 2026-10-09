@@ -104,7 +104,7 @@ export function collectThreeBackendSupport(
         code: "material.threeAdapter",
         path: `${emitterPath}.render.material`,
         message:
-          "Three MVP uses the fixed-function particle material adapter; custom graph lowering is backend-gated until the Three material compiler lands.",
+          "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
         emitterId: emitter.id,
         emitterIndex,
       });

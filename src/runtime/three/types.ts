@@ -65,6 +65,8 @@ export interface ThreeVfxEmitterRuntimeParameterPatch extends ParticleEmitterRun
 }
 
 export interface ThreeVfxRendererOptions {
+  /** Explicit drawing adapter. Omit for the legacy WebGL material path. */
+  renderAdapter?: import("./renderAdapter").ThreeVfxRenderAdapter;
   scene?: Scene;
   camera: Camera;
   textureProvider?: ThreeVfxTextureProvider;
@@ -80,6 +82,8 @@ export interface ThreeVfxRendererOptions {
 }
 
 export interface ThreeVfxEffectInstanceOptions {
+  /** Explicit drawing adapter. Omit for the legacy WebGL material path. */
+  renderAdapter?: import("./renderAdapter").ThreeVfxRenderAdapter;
   effect: unknown;
   camera: Camera;
   textureProvider?: ThreeVfxTextureProvider;

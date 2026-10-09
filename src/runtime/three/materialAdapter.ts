@@ -60,6 +60,8 @@ export interface ThreeEmitterMaterialResolution {
   missingMaterialRef: string | null;
   unsupportedFeatures: string[];
   key: string;
+  /** Node materials receive the same explicit playback clock as GLSL. */
+  updateTime?: (timeSeconds: number) => void;
 }
 
 /** The Three blending constant for a resolved effective blend (I12-G). */
@@ -72,7 +74,11 @@ export function threeBlendingForEffectiveBlend(
 }
 
 export type ThreeParticleMaterial =
-  MeshBasicMaterial | MeshStandardMaterial | ShaderMaterial;
+  | MeshBasicMaterial
+  | MeshStandardMaterial
+  | ShaderMaterial
+  | import("three/webgpu").MeshBasicNodeMaterial
+  | import("three/webgpu").MeshStandardNodeMaterial;
 
 /** Reuse the particle compiler with an isolated trail surface and ribbon inputs. */
 export function createThreeTrailMaterial(
@@ -347,7 +353,9 @@ export function isThreeParticleMaterial(
   return (
     material instanceof MeshBasicMaterial ||
     material instanceof MeshStandardMaterial ||
-    material instanceof ShaderMaterial
+    material instanceof ShaderMaterial ||
+    "isMeshBasicNodeMaterial" in material ||
+    "isMeshStandardNodeMaterial" in material
   );
 }
 

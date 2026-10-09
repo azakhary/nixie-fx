@@ -93,7 +93,11 @@ export function selectThreeTextureFrameIndex(
 }
 
 export function applyThreeTextureFrame(
-  material: MeshBasicMaterial | MeshStandardMaterial,
+  material:
+    | MeshBasicMaterial
+    | MeshStandardMaterial
+    | import("three/webgpu").MeshBasicNodeMaterial
+    | import("three/webgpu").MeshStandardNodeMaterial,
   frames: ThreeTextureFrameSet,
   frameIndex: number,
   materialFixed: MaterialFixedDescriptor | null,

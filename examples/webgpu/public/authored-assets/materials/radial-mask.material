@@ -1,0 +1,34 @@
+{
+  "id": "radial-mask",
+  "name": "Reusable radial mask",
+  "colorVersion": 1,
+  "params": [],
+  "nodes": [
+    {
+      "id": "radial",
+      "type": "fresnel",
+      "params": {
+        "power": 2
+      },
+      "inputs": {},
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    }
+  ],
+  "edges": [],
+  "outputs": {},
+  "subgraph": {
+    "outputs": [
+      {
+        "id": "alpha",
+        "name": "Alpha",
+        "type": "float",
+        "nodeId": "radial",
+        "handle": "out"
+      }
+    ]
+  },
+  "blend": "normal"
+}

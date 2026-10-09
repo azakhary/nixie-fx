@@ -86,6 +86,7 @@ export class ThreeEmitterDrawer {
       if (materialOwnsBlend) view.trailMaterial.transparent = false;
     }
     if (materialOwnsBlend) view.material.transparent = false;
+    view.instanced?.updateTime?.(timeSeconds);
     applyThreeLocalSpaceTrailShift(view, emitter, this.context.position);
 
     let visibleCount = 0;
@@ -128,6 +129,7 @@ export class ThreeEmitterDrawer {
       const surfaceVisible =
         sample.alpha > 0 ||
         view.material instanceof ShaderMaterial ||
+        !!this.context.options.renderAdapter ||
         materialOwnsBlend;
       if (!surfaceVisible) continue;
       if (view.instanced) {

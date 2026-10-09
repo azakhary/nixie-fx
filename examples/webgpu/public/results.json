@@ -1,0 +1,160 @@
+{
+  "task": "WA-2215",
+  "date": "2026-10-09",
+  "desktop": {
+    "model": "MacBook Pro Mac17,2",
+    "gpu": "Apple M5",
+    "memory": "24 GB",
+    "os": "macOS 26.6.2 (25G83)",
+    "browser": "Chrome 154.0.0.0",
+    "display": "1800 x 1169 CSS, 120 Hz internal display",
+    "dpr": 2,
+    "lowPowerMode": false,
+    "three": "0.184.0",
+    "workload": {
+      "consumer": "examples/webgpu",
+      "effect": "webgpu-comparison",
+      "seed": 1234,
+      "instances": 1,
+      "resolution": [
+        3600,
+        1222
+      ],
+      "bloom": false,
+      "vfxLightBudget": 2,
+      "hostLights": 2,
+      "candidates": 13,
+      "radius": 2.8,
+      "overlap": "authored warm/blue sparks and emitter-origin flame",
+      "materials": "custom unlit billboards, standard-node lit opaque meshes, alpha atlas, additive custom trails",
+      "warmupSecondsAtLeast": 10
+    },
+    "runs": [
+      {
+        "backend": "webgpu",
+        "date": "2026-10-09T11:20:05.897Z",
+        "durationSeconds": 30.0235,
+        "samples": 909,
+        "endParticles": 171,
+        "fpsLow": 20.7468879668,
+        "frameMaxMs": 48.2,
+        "frameP99Ms": 36.4,
+        "simulationAndPreparationMaxMs": 3.4,
+        "renderCpuSubmissionMaxMs": 1.5,
+        "editorMs": 0,
+        "totalWorkMaxMs": 4.4,
+        "samplesBelow90fps": 903,
+        "samplesAbove13ms": 903
+      },
+      {
+        "backend": "webgl2-fallback",
+        "date": "2026-10-09T11:22:04.576Z",
+        "durationSeconds": 30.0224,
+        "samples": 906,
+        "endParticles": 191,
+        "fpsLow": 29.1545189504,
+        "frameMaxMs": 34.3,
+        "frameP99Ms": 34.3,
+        "simulationAndPreparationMaxMs": 3.1,
+        "renderCpuSubmissionMaxMs": 1.0,
+        "editorMs": 0,
+        "totalWorkMaxMs": 3.9,
+        "samplesBelow90fps": 899,
+        "samplesAbove13ms": 899
+      },
+      {
+        "backend": "webgpu",
+        "date": "2026-10-09T13:50:02.680Z",
+        "durationSeconds": 30.0045,
+        "samples": 3595,
+        "endParticles": 116,
+        "fpsLow": 39.8406374502,
+        "frameMaxMs": 25.1,
+        "frameP99Ms": 9.3,
+        "simulationAndPreparationMaxMs": 3.0,
+        "renderCpuSubmissionMaxMs": 2.7,
+        "editorMs": 0,
+        "totalWorkMaxMs": 4.3,
+        "samplesBelow90fps": 3,
+        "samplesAbove13ms": 3,
+        "note": "Final regenerated export, same workload. Predominantly 120fps; earlier ~30fps pacing did not reproduce. Cause of pacing change not established. Strict lows gate still fails."
+      }
+    ],
+    "result": "FAIL strict 120 Hz lows target. Earlier native/fallback runs predominantly operated near 30 FPS; final native run predominantly near 120 FPS with 9.3ms p99, but three intervals exceeded 13ms and low was 39.84fps. Cause of pacing change not established. No shipping budget or thermal stability established.",
+    "smoke": [
+      "native WebGPU",
+      "forced Three WebGL2 fallback",
+      "bloom enabled",
+      "scene diffuse graph input",
+      "unsupported emitter/material/node diagnostic",
+      "injected initialization failure and retry",
+      "injected loss notification and explicit legacy fallback",
+      "editor fixed checkpoint survives native/legacy and rapid switches",
+      "material tint edit saved and reopened",
+      "whole-project export through editor with existing partial-support warnings",
+      "editor unsupported-material recovery via Retry and explicit legacy fallback"
+    ],
+    "notVerified": [
+      "bounded visual parity",
+      "actual hardware device loss",
+      "thermal soak",
+      "Three 0.185 browser coverage"
+    ],
+    "editorIdle": {
+      "backend": "webgpu",
+      "effect": "webgpu-comparison",
+      "seed": 1234,
+      "playing": true,
+      "warmupSecondsAtLeast": 10,
+      "bloom": false,
+      "vfxLightBudget": 2,
+      "sceneLights": 1,
+      "capacity": 320,
+      "method": "Visible footer/debug snapshots across 32.653 seconds, not an every-frame trace. Latest React render duration excludes layout/paint.",
+      "samples": [
+        {
+          "at": "12:21:02.800Z",
+          "fps": 30,
+          "frameMs": 33.4,
+          "simulationMs": 0.5,
+          "renderCpuMs": 0.5,
+          "editorReactMs": 0.8
+        },
+        {
+          "at": "12:21:14.441Z",
+          "fps": 30,
+          "frameMs": 33.4,
+          "simulationMs": 0.5,
+          "renderCpuMs": 0.4,
+          "editorReactMs": 1.8
+        },
+        {
+          "at": "12:21:21.448Z",
+          "fps": 30,
+          "frameMs": 33.3,
+          "simulationMs": 0.6,
+          "renderCpuMs": 0.4,
+          "editorReactMs": 3.2
+        },
+        {
+          "at": "12:21:35.453Z",
+          "fps": 30,
+          "frameMs": 33.2,
+          "simulationMs": 0.6,
+          "renderCpuMs": 0.5,
+          "editorReactMs": 0.7
+        }
+      ],
+      "result": "FAIL: every sampled footer below 90fps and above 13ms. Low CPU work does not explain the 30fps pacing; root cause remains unresolved."
+    }
+  },
+  "physicalIOS": {
+    "status": "MISSING",
+    "reason": "Physical device not available to this session; hardware requested from user. No emulation pass claimed."
+  },
+  "physicalAndroid": {
+    "status": "MISSING",
+    "reason": "Physical device not available to this session; hardware requested from user. No emulation pass claimed."
+  },
+  "proof": "Human records and attaches video. No screenshots, recordings, task delivery or status changes made by agent."
+}
