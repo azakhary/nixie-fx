@@ -1,0 +1,17 @@
+{
+  "app": "vfx-editor",
+  "kind": "project",
+  "version": 1,
+  "id": "vfx-damage-number-burst-20d10bdb",
+  "name": "PixiJS damage number burst",
+  "settings": {
+    "effectDataPath": "effects",
+    "outputPath": "public/vfx",
+    "assetRootPath": "assets",
+    "materialsFolder": "materials",
+    "allowExternalOutput": false,
+    "lastEffectFile": "hit-sparks.json"
+  },
+  "createdAt": "2026-10-05T07:20:24.000Z",
+  "updatedAt": "2026-10-05T07:20:24.000Z"
+}

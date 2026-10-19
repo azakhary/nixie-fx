@@ -1,0 +1,9 @@
+body { margin: 0; background: #0e0f14; color: #d9dbe4; font: 14px system-ui, sans-serif; }
+main { max-width: 720px; margin: 20px auto; padding: 0 16px; }
+#app { width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; }
+#app canvas { display: block; width: 100%; height: 100%; }
+.controls { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+button { font: 600 15px system-ui; padding: 8px 16px; border: 0; border-radius: 8px; background: #3a3f55; color: #fff; cursor: pointer; }
+button#crit { background: #d9a32a; color: #241800; }
+button:focus-visible { outline: 3px solid #6cc6ff; outline-offset: 2px; }
+#status { color: #9aa0b4; font: 12px ui-monospace, monospace; }
