@@ -9,6 +9,15 @@ import type { MaterialFixedDescriptor } from "../materials/artifact";
 import { sampleTextureSheetAnimationFrame } from "../modules";
 import { cloneTextureView } from "./textureViews";
 
+const frameTextureSources = new WeakMap<Texture, Texture>();
+
+/** UV-only runtime views can share a sampler once their UVs are baked into vertices. */
+export function threeTextureFrameSource(
+  texture: Texture | null,
+): Texture | null {
+  return texture ? (frameTextureSources.get(texture) ?? texture) : null;
+}
+
 interface ThreeTextureFrame {
   texture: Texture | null;
   offsetX: number;
@@ -185,6 +194,9 @@ function createTextureFrame(
   },
 ): ThreeTextureFrame {
   const frameTexture = clone && texture ? cloneTextureView(texture) : texture;
+  if (clone && texture && frameTexture) {
+    frameTextureSources.set(frameTexture, texture);
+  }
   return {
     texture: frameTexture,
     offsetX: overrides?.offsetX ?? frameTexture?.offset.x ?? 0,

@@ -6,6 +6,7 @@ import {
   type Mesh,
 } from "three";
 import { isBillboardBatchSource } from "./billboardBatchSources";
+import { threeTextureFrameSource } from "./textureFrames";
 
 export interface SurfaceProgram {
   key: string;
@@ -93,7 +94,7 @@ export function surfaceProgram(mesh: Mesh): SurfaceProgram | null {
         t ===
         (m instanceof ShaderMaterial
           ? m.uniforms[old.program.samplers[i]!]?.value
-          : m.map),
+          : threeTextureFrameSource(m.map)),
     ) &&
     old.program.uniforms.every((name, i) =>
       validUniformValue(m, name, old.program.types[i]!),
@@ -182,7 +183,7 @@ export function surfaceProgram(mesh: Mesh): SurfaceProgram | null {
     const texture =
       kind === "billboard"
         ? (m as ShaderMaterial).uniforms.uTexture?.value
-        : (m as MeshBasicMaterial).map;
+        : threeTextureFrameSource((m as MeshBasicMaterial).map);
     if (texture) {
       textures.push(texture);
       samplers.push("uTexture");
