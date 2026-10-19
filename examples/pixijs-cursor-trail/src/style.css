@@ -1,0 +1,71 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: #0b0d12;
+  color: #e8ebf2;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+#app canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* Text sits over the canvas but never takes pointer input from it. */
+.intro,
+.hud {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  user-select: none;
+}
+
+.intro {
+  top: 22px;
+  left: 24px;
+}
+
+.intro h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.intro p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #8a93a6;
+}
+
+.hud {
+  left: 24px;
+  right: 24px;
+  bottom: 18px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 12px;
+  color: #6f788b;
+  font-variant-numeric: tabular-nums;
+}
+
+#status[data-error="true"] {
+  color: #ff8a7a;
+}
