@@ -147,7 +147,7 @@ and [WebGPU sampler setup](https://github.com/mrdoob/three.js/blob/r184/src/rend
 
 ## Tested versions and limits
 
-Development baseline: Three 0.184.0, @types/three 0.184.1, TypeScript 5.7, nixie-fx 0.1.21 release integration. Package peer range remains r184/r185.
+Development baseline: Three 0.184.0, @types/three 0.184.1, TypeScript 5.7, nixie-fx 0.1.22 release integration. Package peer range remains r184/r185.
 The clean package consumer validates normal entry points with Three as its only
 renderer peer; backend-neutral imports remain free of Three/Pixi dependencies.
 r185, Safari and physical mobile browsers are not covered by the desktop smoke.
