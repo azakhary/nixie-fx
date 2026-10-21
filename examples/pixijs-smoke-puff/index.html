@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A reproducible PixiJS 8 smoke-puff example driven by an exported NixieFX effect."
+    />
+    <title>Smoke Puff · PixiJS + NixieFX</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <div>
+          <p class="eyebrow">PIX IJS 8 · NIXIEFX EXPORT</p>
+          <h1>Smoke puff</h1>
+          <p class="lede">
+            Click the exhaust port to replay a deterministic, texture-backed puff.
+          </p>
+        </div>
+        <button id="replay" type="button">Replay puff</button>
+      </header>
+      <section id="stage" aria-label="Interactive PixiJS smoke-puff demo"></section>
+      <footer>
+        <span id="status">Loading compiled effect…</span>
+        <span id="count">0 particles</span>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
