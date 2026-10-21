@@ -1,0 +1,16 @@
+{
+  "app": "vfx-editor",
+  "kind": "project",
+  "version": 1,
+  "id": "pixijs-card-reveal-glow",
+  "name": "PixiJS Card Reveal Glow",
+  "settings": {
+    "effectDataPath": "particle-data/effects",
+    "assetRootPath": "assets",
+    "outputPath": "out/vfx",
+    "materialsFolder": "materials",
+    "allowExternalOutput": false
+  },
+  "createdAt": "2026-10-01T00:00:00.000Z",
+  "updatedAt": "2026-10-01T00:00:00.000Z"
+}

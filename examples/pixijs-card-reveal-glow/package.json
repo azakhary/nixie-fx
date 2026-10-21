@@ -1,0 +1,19 @@
+{
+  "name": "nixiefx-pixijs-card-reveal-glow-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "test": "node --test tests/*.test.mjs",
+    "effect:validate": "nixie-fx validate ./vfx-project",
+    "effect:export": "nixie-fx export ./vfx-project"
+  },
+  "dependencies": {
+    "nixie-fx": "0.1.17",
+    "pixi.js": "8.19.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.1"
+  }
+}
