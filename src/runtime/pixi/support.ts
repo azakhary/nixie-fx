@@ -181,6 +181,16 @@ export function collectPixiVfxUnsupportedFeatures(
     // 2.5D renderer does not provide (default is off). `depthTest`/`depthInk`
     // are on by default and are the renderer's standard 2.5D draw model, so
     // they are documented globally rather than reported per effect.
+    if (emitter.modules.trails && emitter.advanced.trails.model === "unity") {
+      unsupported.push({
+        emitterId: emitter.id,
+        emitterIndex,
+        featureKey: "advanced.trails.model.unity",
+        path: `emitters.${emitterIndex}.advanced.trails.model`,
+        reason:
+          "Unity trail semantics are implemented by the Three backend; Pixi renders these trails with the Nixie trail model.",
+      });
+    }
     if (emitter.render.depthWrite) {
       unsupported.push({
         emitterId: emitter.id,

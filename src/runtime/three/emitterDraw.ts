@@ -10,6 +10,11 @@ import {
 } from "../schema/materials";
 import { threeBlendingForEffectiveBlend } from "./materialAdapter";
 import { clearThreeTrailView, drawThreeTrailView } from "./trailGeometry";
+import {
+  beginThreeUnityTrails,
+  drawThreeUnityTrailView,
+  updateThreeUnityTrail,
+} from "./unityTrailGeometry";
 
 import { hideViewMeshes } from "./emitterView";
 import { ThreeParticlePresentation } from "./particlePresentation";
@@ -88,6 +93,13 @@ export class ThreeEmitterDrawer {
     if (materialOwnsBlend) view.material.transparent = false;
     view.instanced?.updateTime?.(timeSeconds);
     applyThreeLocalSpaceTrailShift(view, emitter, this.context.position);
+    const unityTrails =
+      emitter.modules.trails && emitter.advanced.trails.model === "unity";
+    // Switching trail models mid-playback drops the other model's history.
+    if (unityTrails) {
+      if (view.trailHistories.size > 0) clearThreeTrailView(view);
+      beginThreeUnityTrails(view, state.generation);
+    } else if (view.unityTrails?.trails.size) view.unityTrails.clear();
 
     let visibleCount = 0;
     let bloomSourceCount = 0;
@@ -123,7 +135,11 @@ export class ThreeEmitterDrawer {
       if (!sample?.visible) continue;
       // A carrier can be invisible while feeding an independently shaded trail.
       // Record history before culling its surface, not before simulation.
-      updateThreeTrailHistory(view, emitter, sample, timeSeconds);
+      if (unityTrails)
+        updateThreeUnityTrail(view, emitter, sample, timeSeconds);
+      else updateThreeTrailHistory(view, emitter, sample, timeSeconds);
+      // Render Mode None: simulated (trails, lights, events) but not drawn.
+      if (!emitter.render.drawParticles) continue;
       // Custom shader outputs may ignore or invert particle alpha. Only cull
       // provably transparent fixed-function surfaces; opaque materials own alpha.
       const surfaceVisible =
@@ -190,7 +206,7 @@ export class ThreeEmitterDrawer {
       view.trailMesh.renderOrder =
         this.context.renderOrder +
         (this.context.emitterLayerRanks[emitterIndex] ?? emitterIndex);
-      drawThreeTrailView(
+      (unityTrails ? drawThreeUnityTrailView : drawThreeTrailView)(
         view,
         emitter,
         this.context.camera,

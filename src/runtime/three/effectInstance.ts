@@ -8,6 +8,7 @@ import {
   type ParticleBurstEmitOptions,
   type ParticleEffectDefinition,
   type ParticleEffectRuntimeParameterPatch,
+  type ParticleMotionSampler,
 } from "../../engine/particles";
 import { type VfxEffectInstance, type VfxWorldTransform } from "../backends";
 import { collectThreeBackendSupport } from "../support";
@@ -211,6 +212,24 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
 
   allowCompletion(): void {
     this.runner.allowCompletion();
+  }
+
+  /**
+   * Bind a host motion sampler to one emitter's runtime state (null unbinds).
+   * Returns false when no emitter has that ID. Draws, lights and trails then
+   * sample the host trajectory; see `ParticleMotionSampler`.
+   */
+  setMotionSampler(
+    emitterId: string,
+    sampler: ParticleMotionSampler | null,
+  ): boolean {
+    const index = this.effect.emitters.findIndex(
+      (emitter) => emitter.id === emitterId,
+    );
+    const state = index < 0 ? undefined : this.runner.states[index];
+    if (!state) return false;
+    state.motionSampler = sampler;
+    return true;
   }
 
   setRuntimeParameters(parameters: ParticleEffectRuntimeParameterPatch): void {

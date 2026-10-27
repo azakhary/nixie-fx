@@ -24,6 +24,8 @@ import {
   type MaterialInstance,
 } from "./materialInstance";
 export type { MaterialInstance } from "./materialInstance";
+import type { ParticleMotionSampler } from "./particleMotionSampler";
+export type { ParticleMotionSampler } from "./particleMotionSampler";
 import {
   createBareParticleModuleSettings,
   createDefaultParticleAdvancedModules,
@@ -340,6 +342,12 @@ export interface ParticleRenderSettings {
   opacitySource: ParticleOpacitySource;
   /** Invert the derived opacity (1 - alpha). Has no effect on `textureAlpha`. */
   opacityInvert: boolean;
+  /**
+   * Whether particle surfaces are drawn. `false` keeps the particle simulated
+   * (trails, lights, sub-emitters and events still read it) but submits no
+   * billboard or mesh, like Unity's Render Mode None for trail-only effects.
+   */
+  drawParticles: boolean;
   /**
    * Project-relative path (under the project `assets/` folder) of the texture
    * applied to particles. `null` falls back to the procedural billboard shape.
@@ -716,6 +724,7 @@ const DEFAULT_EMITTER: ParticleEmitterDefinition = {
     alignmentVector: [0, 1, 0],
     opacitySource: "textureAlpha",
     opacityInvert: false,
+    drawParticles: true,
     texture: null,
     material: null,
   },
@@ -1749,6 +1758,7 @@ function normalizeRender(
     alignmentVector: normalizeVec3(source.alignmentVector, [0, 1, 0], -1, 1),
     opacitySource: normalizeOpacitySource(source.opacitySource),
     opacityInvert: source.opacityInvert === true,
+    drawParticles: source.drawParticles !== false,
     texture:
       typeof source.texture === "string" && source.texture.trim()
         ? source.texture.trim()
@@ -2729,10 +2739,19 @@ class ParticleRng {
   }
 }
 
+let nextParticleStateGeneration = 0;
+
 export class ParticleEmitterRuntimeState {
   readonly instanceData: Float32Array;
   readonly particleIds: Float64Array;
   private nextParticleId = 0;
+  /**
+   * Identifies this state's lifecycle. Particle IDs are unique only within one
+   * generation; reset and cloned states receive a fresh generation.
+   */
+  generation = ++nextParticleStateGeneration;
+  /** Host-owned motion replacement; null keeps analytic motion. */
+  motionSampler: ParticleMotionSampler | null = null;
   readonly spawnLocalPositionData: Float32Array;
   readonly spawnDirectionData: Float32Array;
   readonly spawnOriginData: Float32Array;
@@ -2769,6 +2788,8 @@ export class ParticleEmitterRuntimeState {
   }
 
   reset(): void {
+    this.motionSampler?.reset?.();
+    this.generation = ++nextParticleStateGeneration;
     this.nextParticleId = 0;
     this.activeCount = 0;
     this.emittedLastFrame = 0;
@@ -2814,6 +2835,7 @@ export class ParticleEmitterRuntimeState {
     next.triggerFlagsData.set(this.triggerFlagsData.subarray(0, activeCount));
     next.particleIds.set(this.particleIds.subarray(0, activeCount));
     next.nextParticleId = this.nextParticleId;
+    next.motionSampler = this.motionSampler;
     next.activeCount = activeCount;
     next.emittedLastFrame = this.emittedLastFrame;
     next.uploadBytesLastFrame = this.uploadBytesLastFrame;
@@ -3197,6 +3219,13 @@ export class ParticleEffectRunner {
       } else if (emitting) {
         this.advanceEmitterWithoutEmission(emitter, state, emitterAge);
       }
+      state.motionSampler?.advance?.(
+        emitter,
+        state,
+        dt,
+        timeSeconds,
+        this.effectiveInitialVelocityMultiplier(emitter.id),
+      );
       anyAlive = anyAlive || state.activeCount > 0;
     }
     this.refreshStats();
@@ -3458,7 +3487,10 @@ export class ParticleEffectRunner {
       velocityY += inherited[1] * multiplier;
       velocityZ += inherited[2] * multiplier;
     }
-    if (emitter.modules.limitVelocityOverLifetime) {
+    if (
+      emitter.modules.limitVelocityOverLifetime &&
+      !state.motionSampler?.preserveInitialVelocity
+    ) {
       const settings = emitter.advanced.limitVelocityOverLifetime;
       const dampen = settings.dampen;
       const drag = sampleParticleScalarValue(
@@ -4154,6 +4186,19 @@ export function sampleParticleSimulationMotion(
   },
   initialVelocityMultiplier = 1,
 ): ParticleMotionResult {
+  if (
+    state.motionSampler?.sample(
+      emitter,
+      state,
+      particleIndex,
+      ageSeconds,
+      normalizedAge,
+      currentEmitterPosition,
+      out,
+      initialVelocityMultiplier,
+    )
+  )
+    return out;
   const offset = particleIndex * PARTICLE_INSTANCE_STRIDE;
   const loopAgeT = emitterLoopAgeT(emitter, state);
   const seed = state.instanceData[offset + 8] ?? 0.5;
@@ -4238,6 +4283,45 @@ export function sampleParticleSimulationMotion(
   }
 
   return out;
+}
+
+/** Decorrelated per-axis random for `axisRandom: "independent"` (Unity draws one per axis). */
+function velocityAxisSeed(seed: number, axis: number): number {
+  const value = Math.sin(seed * 91.3458 + axis * 47.853) * 43758.5453123;
+  return value - Math.floor(value);
+}
+
+/** Mean linear velocity over [0, age]; loop-age curves keep their sampled value. */
+function averageLinearVelocity(
+  value: ParticleScalarValue,
+  normalizedAge: number,
+  seed: number,
+  loopAgeT: number,
+): number {
+  if (value.mode === "curve" || value.mode === "randomCurve") {
+    if (value.xAxis !== "loopAge")
+      return sampleParticleScalarValueIntegralAverage(
+        value,
+        normalizedAge,
+        seed,
+      );
+  }
+  return sampleParticleScalarValue(value, normalizedAge, seed, loopAgeT);
+}
+
+function orientVelocityOverLifetime(
+  raw: Vec3,
+  local: boolean,
+  rotation: Vec3,
+  out: Vec3,
+): void {
+  if (local) {
+    rotateEulerDegreesInto(raw[0], raw[1], raw[2], rotation, out);
+    return;
+  }
+  out[0] = raw[0];
+  out[1] = raw[1];
+  out[2] = raw[2];
 }
 
 /** Simulation space is captured at birth; switching the setting affects new particles. */
@@ -4364,6 +4448,11 @@ function applyVelocityOverLifetime(
     isParticleLocalSpace(state, particleIndex) && !worldModuleInLocalSimulation;
   const local = vol.space === "local" && !localSimulation;
   // 1) LINEAR. World axes in world space; spawn-rotated axes in local space.
+  // Velocity is the curve at the current age; displacement is its integral, so
+  // curve modes trace the authored velocity profile instead of v(t) * age.
+  const independent = vol.axisRandom === "independent";
+  const seedY = independent ? velocityAxisSeed(seed, 1) : seed;
+  const seedZ = independent ? velocityAxisSeed(seed, 2) : seed;
   const linRaw = scratchA;
   linRaw[0] = sampleParticleScalarValue(
     vol.linear.x,
@@ -4374,32 +4463,39 @@ function applyVelocityOverLifetime(
   linRaw[1] = sampleParticleScalarValue(
     vol.linear.y,
     normalizedAge,
-    seed,
+    seedY,
     loopAgeT,
   );
   linRaw[2] = sampleParticleScalarValue(
     vol.linear.z,
     normalizedAge,
-    seed,
+    seedZ,
     loopAgeT,
   );
   const lin = scratchB;
-  if (local) {
-    rotateEulerDegreesInto(
-      linRaw[0],
-      linRaw[1],
-      linRaw[2],
-      emitter.spawn.rotation,
-      lin,
-    );
-  } else {
-    lin[0] = linRaw[0];
-    lin[1] = linRaw[1];
-    lin[2] = linRaw[2];
-  }
+  orientVelocityOverLifetime(linRaw, local, emitter.spawn.rotation, lin);
   velocity[0] += lin[0] * speedModifier;
   velocity[1] += lin[1] * speedModifier;
   velocity[2] += lin[2] * speedModifier;
+  linRaw[0] = averageLinearVelocity(
+    vol.linear.x,
+    normalizedAge,
+    seed,
+    loopAgeT,
+  );
+  linRaw[1] = averageLinearVelocity(
+    vol.linear.y,
+    normalizedAge,
+    seedY,
+    loopAgeT,
+  );
+  linRaw[2] = averageLinearVelocity(
+    vol.linear.z,
+    normalizedAge,
+    seedZ,
+    loopAgeT,
+  );
+  orientVelocityOverLifetime(linRaw, local, emitter.spawn.rotation, lin);
   position[0] += lin[0] * ageSeconds * integratedSpeedModifier;
   position[1] += lin[1] * ageSeconds * integratedSpeedModifier;
   position[2] += lin[2] * ageSeconds * integratedSpeedModifier;

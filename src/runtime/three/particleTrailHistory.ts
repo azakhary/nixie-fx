@@ -123,7 +123,7 @@ export function applyThreeLocalSpaceTrailShift(
   if (
     emitter.modules.trails &&
     !emitter.advanced.trails.worldSpace &&
-    view.trailHistories.size > 0
+    (view.trailHistories.size > 0 || (view.unityTrails?.trails.size ?? 0) > 0)
   ) {
     const dx = emitterPosition[0] - previous[0];
     const dy = emitterPosition[1] - previous[1];
@@ -136,6 +136,9 @@ export function applyThreeLocalSpaceTrailShift(
           point.position.z += dz;
         }
       }
+      if (view.unityTrails)
+        for (const trail of view.unityTrails.trails.values())
+          trail.shift(dx, dy, dz);
     }
   }
   previous[0] = emitterPosition[0];

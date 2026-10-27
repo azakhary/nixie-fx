@@ -1938,6 +1938,8 @@ function drawEmitterView(
     if (!sample.visible || view.materialBlock) continue;
     if (!view.trailMaterial)
       updateTrailHistory(view, emitter, sample, timeSeconds);
+    // Render Mode None: simulated (trails, events) but not drawn.
+    if (!emitter.render.drawParticles) continue;
     if (bloom.enabled && sample.emissiveStrength > bloom.threshold) {
       const bloomParticle =
         view.bloomPool[bloomSourceCount] ?? createParticle(sample.texture);

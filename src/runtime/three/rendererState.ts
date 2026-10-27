@@ -68,6 +68,12 @@ export interface ThreeViewBuildContext {
 }
 
 export interface ParticleSample {
+  /** Stable within this emitter generation, independent of swap-removal/sorting. */
+  particleId: number;
+  /** Unique state lifecycle; changes on restart/reset and for cloned states. */
+  generation: number;
+  /** Particle lifetime in seconds. */
+  lifetime: number;
   visible: boolean;
   position: Vec3;
   velocity: Vec3;

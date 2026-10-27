@@ -320,6 +320,22 @@ attachment transforms and effect updates together from time zero. Effect-root
 rotation/scale and ancestor transforms still follow the normal renderer-root
 semantics; this is not a full world-space skeletal binding API.
 
+### Unity-compatible trails
+
+Set `advanced.trails.model: "unity"` for effects converted from Unity's Trails
+module (Three backend; Pixi reports `advanced.trails.model.unity` and renders
+the Nixie model). See [docs/unity-trails.md](docs/unity-trails.md) for the exact
+rules, `render.drawParticles: false` (Render Mode None) and the related
+Velocity over Lifetime options.
+
+### Host motion samplers
+
+`ThreeVfxEffectInstance.setMotionSampler(emitterId, sampler)` binds a
+`ParticleMotionSampler` to one emitter state, for hosts that own a stepped
+integrator. Draws, lights and trails then sample the host trajectory; unbinding
+(`null`) restores analytic motion. Samples expose a stable `particleId` and the
+state `generation`, which changes on reset and for cloned states.
+
 ## Other engines
 
 The export format is engine-neutral JSON: `manifest.json` plus per-effect

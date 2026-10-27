@@ -3643,3 +3643,103 @@ describe("curve graph/runtime parity (B6)", () => {
     expect(curve[2]!.weightIn).toBeCloseTo(0.25);
   });
 });
+
+describe("velocity over lifetime curve integration and axis random", () => {
+  function curveEffect(axisRandom: "shared" | "independent") {
+    const effect = createVelocityOverLifetimeEffect({ space: "world" });
+    const vol = effect.emitters[0]!.advanced.velocityOverLifetime;
+    vol.axisRandom = axisRandom;
+    // v_x(t) = 4 − 8t over a 10 s life: ∫ = 4τ·10 − 4τ²·10.
+    vol.linear.x = normalizeParticleScalarValue(linearCurve(4, -4), 0, -32, 32);
+    vol.linear.y = normalizeParticleScalarValue(
+      { mode: "random", min: 0, max: 1 },
+      0,
+      -32,
+      32,
+    );
+    vol.linear.z = normalizeParticleScalarValue(
+      { mode: "random", min: 0, max: 1 },
+      0,
+      -32,
+      32,
+    );
+    return effect;
+  }
+
+  it("displaces by the integral of a linear velocity curve, not v(t) * age", () => {
+    const runner = spawnVolRunner(curveEffect("shared"));
+    const emitter = runner.definition.emitters[0]!;
+    const state = runner.states[0]!;
+    const half = sampleParticleMotion(emitter, state, 0, 5, 0.5, [0, 0, 0]);
+    expect(half.velocity[0]).toBeCloseTo(0, 4);
+    expect(half.position[0]).toBeCloseTo(10, 2);
+    const end = sampleParticleMotion(emitter, state, 0, 10, 1, [0, 0, 0]);
+    expect(end.position[0]).toBeCloseTo(0, 2);
+  });
+
+  it("shares one random across axes by default and decorrelates them when independent", () => {
+    const shared = spawnVolRunner(curveEffect("shared"));
+    const a = sampleParticleMotion(
+      shared.definition.emitters[0]!,
+      shared.states[0]!,
+      0,
+      1,
+      0.1,
+      [0, 0, 0],
+    );
+    expect(a.velocity[1]).toBeCloseTo(a.velocity[2], 9);
+    const independent = spawnVolRunner(curveEffect("independent"));
+    const b = sampleParticleMotion(
+      independent.definition.emitters[0]!,
+      independent.states[0]!,
+      0,
+      1,
+      0.1,
+      [0, 0, 0],
+    );
+    expect(Math.abs(b.velocity[1] - b.velocity[2])).toBeGreaterThan(1e-6);
+    expect(b.position[1]).toBeCloseTo(b.velocity[1], 6);
+  });
+});
+
+describe("render.drawParticles and host motion samplers", () => {
+  it("defaults drawParticles to true and preserves an explicit false", () => {
+    expect(
+      normalizeParticleEffect({ emitters: [{}] }).emitters[0]!.render
+        .drawParticles,
+    ).toBe(true);
+    expect(
+      normalizeParticleEffect({
+        emitters: [{ render: { drawParticles: false } }],
+      }).emitters[0]!.render.drawParticles,
+    ).toBe(false);
+  });
+
+  it("routes motion through a bound sampler and resets it with a fresh generation", () => {
+    const runner = spawnVolRunner(
+      createVelocityOverLifetimeEffect({ space: "world" }),
+    );
+    const emitter = runner.definition.emitters[0]!;
+    const state = runner.states[0]!;
+    let resets = 0;
+    let advances = 0;
+    state.motionSampler = {
+      reset: () => resets++,
+      advance: () => advances++,
+      sample: (_e, _s, _i, _age, _t, _p, out) => {
+        out.position[0] = 7;
+        out.velocity[0] = 3;
+        return true;
+      },
+    };
+    const motion = sampleParticleMotion(emitter, state, 0, 1, 0.1, [0, 0, 0]);
+    expect(motion.position[0]).toBe(7);
+    runner.update(0.016, 0.017);
+    expect(advances).toBe(1);
+    const generation = state.generation;
+    state.reset();
+    expect(resets).toBe(1);
+    expect(state.generation).not.toBe(generation);
+    expect(state.cloneWithCapacity(8).motionSampler).toBe(state.motionSampler);
+  });
+});

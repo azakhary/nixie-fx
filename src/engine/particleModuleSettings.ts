@@ -118,8 +118,15 @@ export interface ParticleVec3ScalarSettings {
   y: ParticleScalarValue;
   z: ParticleScalarValue;
 }
+/**
+ * How random-mode linear velocity picks its blend per axis. `shared` uses one
+ * particle random for X/Y/Z (legacy); `independent` draws one per axis, as
+ * Unity's Velocity over Lifetime does.
+ */
+export type ParticleVelocityAxisRandom = "shared" | "independent";
 export interface ParticleVelocityOverLifetimeSettings {
   space: ParticleVelocityOverLifetimeSpace;
+  axisRandom: ParticleVelocityAxisRandom;
   linear: ParticleVec3ScalarSettings;
   orbital: ParticleVec3ScalarSettings;
   orbitalOffset: ParticleVec3ScalarSettings;
@@ -220,13 +227,22 @@ export interface ParticleLightSettings {
 }
 export type ParticleTrailTextureMode = "stretch" | "tile";
 /**
- * Trail rendering strategy. Only `particleHistory` is implemented: pooled,
- * stretched "particle history" quads (an approximation, not a real ribbon
- * mesh). `ribbon` is reserved for forward-compat and a future real ribbon
- * renderer; if it appears it is rendered as `particleHistory`.
+ * Trail source. `particleHistory` builds one continuous camera-facing ribbon per
+ * particle from its position history. `ribbon` is reserved for a future
+ * particle-to-particle ribbon and is currently rendered as `particleHistory`.
  */
 export type ParticleTrailMode = "particleHistory" | "ribbon";
+/**
+ * Trail semantics. `nixie` keeps the original preview rules (per-point age
+ * color, implicit head-to-tail and age fades, lifetime in seconds). `unity`
+ * matches Unity's Trails module: a live head separate from distance-spaced
+ * points, continuous tail clipping, lifetime as a multiple of particle
+ * lifetime, current particle color/size across the ribbon, color over
+ * lifetime by particle age, and no implicit fades.
+ */
+export type ParticleTrailModel = "nixie" | "unity";
 export interface ParticleTrailSettings {
+  model: ParticleTrailModel;
   /** Independent Three.js trail surface; null preserves legacy rendering. */
   material: MaterialInstance | null;
   depthTest: boolean;
@@ -249,6 +265,12 @@ export interface ParticleTrailSettings {
   texture: string | null;
   minVertexDistance: number;
   worldSpace: boolean;
+  /** Unity model: width multiplies the current particle size. */
+  sizeAffectsWidth: boolean;
+  /** Unity model: point lifetime multiplies the current particle size. */
+  sizeAffectsLifetime: boolean;
+  /** Unity model: remove the trail when its particle dies instead of letting it expire. */
+  dieWithParticles: boolean;
 }
 export interface ParticleCustomDataSettings {
   label: string;
@@ -325,6 +347,7 @@ export function createDefaultParticleAdvancedModules(): ParticleAdvancedModuleSe
       },
       radial: createConstantScalar(0, -32, 32),
       speedModifier: createConstantScalar(1, 0, 4),
+      axisRandom: "shared",
     },
     limitVelocityOverLifetime: {
       separateAxes: false,
@@ -414,6 +437,7 @@ export function createDefaultParticleAdvancedModules(): ParticleAdvancedModuleSe
       additive: true,
     },
     trails: {
+      model: "nixie",
       material: null,
       depthTest: true,
       depthWrite: false,
@@ -431,6 +455,9 @@ export function createDefaultParticleAdvancedModules(): ParticleAdvancedModuleSe
       texture: null,
       minVertexDistance: 0.02,
       worldSpace: true,
+      sizeAffectsWidth: true,
+      sizeAffectsLifetime: false,
+      dieWithParticles: true,
     },
     customData: {
       label: "",
@@ -569,6 +596,10 @@ function normalizeVelocityOverLifetime(
       fallback.speedModifier,
       normalizeScalar,
     ),
+    axisRandom:
+      source.axisRandom === "independent" || source.axisRandom === "shared"
+        ? source.axisRandom
+        : fallback.axisRandom,
   };
 }
 function normalizeLimitVelocityOverLifetime(
@@ -850,6 +881,7 @@ function normalizeTrails(
       ? null
       : normalizeGradient(source.color, [1, 1, 1, 1], [1, 1, 1, 0]);
   return {
+    model: source.model === "unity" ? "unity" : "nixie",
     material: normalizeOptionalMaterialInstance(source.material),
     depthTest: typeof source.depthTest === "boolean" ? source.depthTest : true,
     depthWrite:
@@ -889,6 +921,18 @@ function normalizeTrails(
       typeof source.worldSpace === "boolean"
         ? source.worldSpace
         : fallback.worldSpace,
+    sizeAffectsWidth:
+      typeof source.sizeAffectsWidth === "boolean"
+        ? source.sizeAffectsWidth
+        : fallback.sizeAffectsWidth,
+    sizeAffectsLifetime:
+      typeof source.sizeAffectsLifetime === "boolean"
+        ? source.sizeAffectsLifetime
+        : fallback.sizeAffectsLifetime,
+    dieWithParticles:
+      typeof source.dieWithParticles === "boolean"
+        ? source.dieWithParticles
+        : fallback.dieWithParticles,
   };
 }
 function normalizeCustomData(

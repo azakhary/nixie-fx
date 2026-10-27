@@ -18,6 +18,7 @@ import {
 } from "../../engine/particles";
 import type { Vec3, Vec4 } from "../../engine/math";
 import { sampleIndependentTrailColor } from "../trailColor";
+import type { UnityTrailSet } from "../unityTrail";
 import { PARTICLE_ALIGNMENT_AXIS } from "../particleOrientation";
 import type {
   ThreeEmitterMaterialResolution,
@@ -38,6 +39,8 @@ export interface ThreeTrailView {
   trailResolution: ThreeEmitterMaterialResolution | null;
   trailTextureFrames: ThreeTextureFrameSet | null;
   trailHistories: Map<string, ThreeTrailHistory>;
+  /** Unity-model histories keyed by particle ID; created on first use. */
+  unityTrails?: UnityTrailSet;
   trailEmitterPosition: Vec3;
   /** Retained high-water storage, released with the owning emitter view. */
   trailBuffers?: ThreeTrailBuffers;
@@ -284,6 +287,7 @@ export function drawThreeTrailView(
 }
 
 export function clearThreeTrailView(view: ThreeTrailView): void {
+  view.unityTrails?.clear();
   const pool = (view.trailPointPool ??= []);
   for (const history of view.trailHistories.values()) {
     for (const point of history.points) pool.push(point);
@@ -292,7 +296,7 @@ export function clearThreeTrailView(view: ThreeTrailView): void {
   clearThreeTrailGeometry(view);
 }
 
-function clearThreeTrailGeometry(view: ThreeTrailView): void {
+export function clearThreeTrailGeometry(view: ThreeTrailView): void {
   view.trailMesh.visible = false;
   // Keep the high-water allocation ready for the next burst; stale capacity
   // vertices are never submitted because the live index range is empty.
@@ -333,7 +337,7 @@ export function pruneThreeTrailPoints(
 }
 
 const WHITE: Vec4 = [1, 1, 1, 1];
-interface ThreeTrailBuffers {
+export interface ThreeTrailBuffers {
   capacity: number;
   position: BufferAttribute & { array: Float32Array };
   color: BufferAttribute & { array: Float32Array };
@@ -355,7 +359,7 @@ function floatAttribute(capacity: number, itemSize: number) {
   ).setUsage(DynamicDrawUsage) as BufferAttribute & { array: Float32Array };
 }
 
-function ensureTrailBuffers(
+export function ensureTrailBuffers(
   view: ThreeTrailView,
   requiredVertices: number,
 ): ThreeTrailBuffers {
@@ -391,7 +395,7 @@ function ensureTrailBuffers(
   return buffers;
 }
 
-function updateTrailBounds(
+export function updateTrailBounds(
   geometry: BufferGeometry,
   buffers: ThreeTrailBuffers,
   vertexCount: number,

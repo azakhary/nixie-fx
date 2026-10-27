@@ -76,6 +76,9 @@ export class ThreeParticleSampler {
   private readonly preCollisionWorldScratch: Vec3 = [0, 0, 0];
   private readonly effectiveAlignmentVelocity: Vec3 = [0, 0, 0];
   private readonly sampleScratch: ParticleSample = {
+    particleId: 0,
+    generation: 0,
+    lifetime: 0,
     visible: true,
     position: [0, 0, 0],
     velocity: [0, 0, 0],
@@ -312,6 +315,9 @@ export class ThreeParticleSampler {
 
     const sample = this.sampleScratch;
     sample.visible = true;
+    sample.particleId = state.particleIds[particleIndex] ?? 0;
+    sample.generation = state.generation;
+    sample.lifetime = life;
     sample.position[0] = world[0];
     sample.position[1] = world[1];
     sample.position[2] = world[2];

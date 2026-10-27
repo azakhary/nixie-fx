@@ -139,6 +139,9 @@ describe("retained Three trail geometry", () => {
       { effect, renderGeometryOverride: null },
     );
     const sample: ParticleSample = {
+      particleId: 1,
+      generation: 1,
+      lifetime: 1,
       visible: true,
       position: [0, 0, 0],
       velocity: [0, 1, 0],
