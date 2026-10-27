@@ -59,7 +59,9 @@ export class ThreeNodeInstances implements ThreeVfxInstancedView {
   }
   setRenderState(emitter: ParticleEmitterDefinition): void {
     this.allOpaque = true;
-    this.depthAuthored = resolveParticleDepthWrite(emitter.render);
+    this.depthAuthored =
+      !emitter.render.softParticles.enabled &&
+      resolveParticleDepthWrite(emitter.render);
   }
   updateTime(time: number): void {
     this.resolution.updateTime?.(time);

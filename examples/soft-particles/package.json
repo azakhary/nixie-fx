@@ -1,0 +1,8 @@
+{
+  "name": "nixie-soft-particles-review",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite --host 127.0.0.1 --port 8086 --strictPort" },
+  "dependencies": { "nixie-fx": "0.1.24", "three": "0.184.0" },
+  "devDependencies": { "vite": "^6.2.0" }
+}

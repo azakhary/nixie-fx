@@ -99,6 +99,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   private readonly drawer: ThreeEmitterDrawer;
 
   constructor(private readonly options: ThreeVfxEffectInstanceOptions) {
+    options.softParticles?.exclude(this.root);
     // Getters retain live host state without allocating a context every frame.
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const owner = this;
@@ -525,6 +526,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     this.stop();
     this.rebuildViews();
     this.root.removeFromParent();
+    this.options.softParticles?.include(this.root);
   }
 
   private draw(timeSeconds: number): void {

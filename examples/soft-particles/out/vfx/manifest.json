@@ -1,0 +1,932 @@
+{
+  "kind": "vfx-manifest",
+  "version": 1,
+  "generatedAt": "2026-10-27T12:28:03.299Z",
+  "sourceHash": "fnv1a32:8490670a",
+  "effects": [
+    {
+      "id": "glow",
+      "name": "Glow",
+      "path": "effects/glow.json",
+      "sourceEffectFile": "glow.json",
+      "sourceEffectId": "glow",
+      "sourceHash": "fnv1a32:f9a28f5d",
+      "support": {
+        "status": "supported",
+        "overall": "supported",
+        "targetProfile": "three-world-3d",
+        "preferredBackend": "three3d",
+        "portableSubset": true,
+        "backends": {
+          "pixi2d": {
+            "backend": "pixi2d",
+            "status": "supported",
+            "warnings": [],
+            "blockers": [],
+            "notes": [
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              }
+            ]
+          },
+          "three3d": {
+            "backend": "three3d",
+            "status": "supported",
+            "warnings": [],
+            "blockers": []
+          }
+        },
+        "unsupportedModules": [],
+        "partialModules": [],
+        "warnings": [],
+        "notes": [
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+        ]
+      },
+      "validation": {
+        "valid": true,
+        "errors": [],
+        "warnings": [],
+        "infos": [
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          }
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "materials",
+      "name": "Materials",
+      "path": "effects/materials.json",
+      "sourceEffectFile": "materials.json",
+      "sourceEffectId": "materials",
+      "sourceHash": "fnv1a32:e42df880",
+      "support": {
+        "status": "partial",
+        "overall": "partial",
+        "targetProfile": "three-world-3d",
+        "preferredBackend": "three3d",
+        "portableSubset": false,
+        "backends": {
+          "pixi2d": {
+            "backend": "pixi2d",
+            "status": "blocked",
+            "warnings": [
+              {
+                "code": "unsupported-module",
+                "path": "emitters.7.modules.trails",
+                "message": "trails has partial runtime export support; validate authored subfields before shipping."
+              },
+              {
+                "code": "render.softParticles",
+                "path": "emitters.0.render.softParticles",
+                "message": "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+                "emitterId": "emitter-1-normal",
+                "emitterIndex": 0
+              },
+              {
+                "code": "render.softParticles",
+                "path": "emitters.1.render.softParticles",
+                "message": "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+                "emitterId": "emitter-1-additive",
+                "emitterIndex": 1
+              },
+              {
+                "code": "render.softParticles",
+                "path": "emitters.2.render.softParticles",
+                "message": "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+                "emitterId": "emitter-1-premultiplied",
+                "emitterIndex": 2
+              },
+              {
+                "code": "render.softParticles",
+                "path": "emitters.3.render.softParticles",
+                "message": "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+                "emitterId": "emitter-1-opaque",
+                "emitterIndex": 3
+              },
+              {
+                "code": "render.softParticles",
+                "path": "emitters.4.render.softParticles",
+                "message": "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+                "emitterId": "emitter-1-masked",
+                "emitterIndex": 4
+              },
+              {
+                "code": "render.softParticles",
+                "path": "emitters.6.render.softParticles",
+                "message": "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+                "emitterId": "legacy-58864b53-2108-43ea-ba05-cdc46055e0cc",
+                "emitterIndex": 6
+              },
+              {
+                "code": "render.softParticles",
+                "path": "emitters.7.render.softParticles",
+                "message": "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+                "emitterId": "trails-edeb5a12-0f3f-4948-a984-d702972abc47",
+                "emitterIndex": 7
+              },
+              {
+                "code": "render.shading.lit",
+                "path": "emitters.7.render.shading",
+                "message": "Lit particle shading requires the Three 3D/world backend; Pixi keeps unlit particle compositing.",
+                "emitterId": "trails-edeb5a12-0f3f-4948-a984-d702972abc47",
+                "emitterIndex": 7
+              }
+            ],
+            "blockers": [
+              {
+                "code": "mode.meshAsset",
+                "path": "emitters.2.mesh.asset",
+                "message": "Mesh particle assets require the Three 3D/world backend; Pixi does not render prepared 3D mesh geometry.",
+                "emitterId": "emitter-1-premultiplied",
+                "emitterIndex": 2
+              }
+            ],
+            "notes": [
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.1.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.1.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.2.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.2.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.3.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.3.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.4.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.4.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.5.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.5.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.6.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.6.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.7.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.7.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              }
+            ]
+          },
+          "three3d": {
+            "backend": "three3d",
+            "status": "partial",
+            "warnings": [
+              {
+                "code": "unsupported-module",
+                "path": "emitters.7.modules.trails",
+                "message": "trails has partial runtime export support; validate authored subfields before shipping."
+              },
+              {
+                "code": "material.threeAdapter",
+                "path": "emitters.0.render.material",
+                "message": "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
+                "emitterId": "emitter-1-normal",
+                "emitterIndex": 0
+              },
+              {
+                "code": "material.threeAdapter",
+                "path": "emitters.1.render.material",
+                "message": "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
+                "emitterId": "emitter-1-additive",
+                "emitterIndex": 1
+              },
+              {
+                "code": "material.threeAdapter",
+                "path": "emitters.2.render.material",
+                "message": "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
+                "emitterId": "emitter-1-premultiplied",
+                "emitterIndex": 2
+              },
+              {
+                "code": "material.threeAdapter",
+                "path": "emitters.3.render.material",
+                "message": "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
+                "emitterId": "emitter-1-opaque",
+                "emitterIndex": 3
+              },
+              {
+                "code": "material.threeAdapter",
+                "path": "emitters.4.render.material",
+                "message": "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
+                "emitterId": "emitter-1-masked",
+                "emitterIndex": 4
+              },
+              {
+                "code": "material.threeAdapter",
+                "path": "emitters.5.render.material",
+                "message": "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
+                "emitterId": "shared-38dc6ab5-3189-4bc3-9364-3ae1e49e03dd",
+                "emitterIndex": 5
+              },
+              {
+                "code": "material.threeAdapter",
+                "path": "emitters.6.render.material",
+                "message": "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
+                "emitterId": "legacy-58864b53-2108-43ea-ba05-cdc46055e0cc",
+                "emitterIndex": 6
+              }
+            ],
+            "blockers": []
+          }
+        },
+        "unsupportedModules": [],
+        "partialModules": [
+          "emitters.7.modules.trails"
+        ],
+        "warnings": [
+          "trails has partial runtime export support; validate authored subfields before shipping."
+        ],
+        "notes": [
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+        ]
+      },
+      "validation": {
+        "valid": true,
+        "errors": [],
+        "warnings": [
+          {
+            "severity": "warning",
+            "code": "unsupported-module",
+            "path": "emitters.7.modules.trails",
+            "message": "trails has partial runtime export support; validate authored subfields before shipping."
+          }
+        ],
+        "infos": [
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.1.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.1.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.2.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.2.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.3.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.3.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.4.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.4.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.5.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.5.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.6.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.6.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.7.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.7.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          }
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "smoke",
+      "name": "Smoke",
+      "path": "effects/smoke.json",
+      "sourceEffectFile": "smoke.json",
+      "sourceEffectId": "smoke",
+      "sourceHash": "fnv1a32:a68fe813",
+      "support": {
+        "status": "supported",
+        "overall": "supported",
+        "targetProfile": "three-world-3d",
+        "preferredBackend": "three3d",
+        "portableSubset": false,
+        "backends": {
+          "pixi2d": {
+            "backend": "pixi2d",
+            "status": "partial",
+            "warnings": [
+              {
+                "code": "render.softParticles",
+                "path": "emitters.0.render.softParticles",
+                "message": "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+                "emitterId": "emitter-1",
+                "emitterIndex": 0
+              }
+            ],
+            "blockers": [],
+            "notes": [
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              }
+            ]
+          },
+          "three3d": {
+            "backend": "three3d",
+            "status": "supported",
+            "warnings": [],
+            "blockers": []
+          }
+        },
+        "unsupportedModules": [],
+        "partialModules": [],
+        "warnings": [],
+        "notes": [
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+        ]
+      },
+      "validation": {
+        "valid": true,
+        "errors": [],
+        "warnings": [],
+        "infos": [
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          }
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "thresholds",
+      "name": "Thresholds",
+      "path": "effects/thresholds.json",
+      "sourceEffectFile": "thresholds.json",
+      "sourceEffectId": "thresholds",
+      "sourceHash": "fnv1a32:38db8bce",
+      "support": {
+        "status": "supported",
+        "overall": "supported",
+        "targetProfile": "three-world-3d",
+        "preferredBackend": "three3d",
+        "portableSubset": false,
+        "backends": {
+          "pixi2d": {
+            "backend": "pixi2d",
+            "status": "partial",
+            "warnings": [
+              {
+                "code": "render.softParticles",
+                "path": "emitters.0.render.softParticles",
+                "message": "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+                "emitterId": "threshold-5ec0a264-9ba4-44cc-b622-94557337b2db",
+                "emitterIndex": 0
+              },
+              {
+                "code": "render.softParticles",
+                "path": "emitters.1.render.softParticles",
+                "message": "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+                "emitterId": "threshold-2ded3a15-db95-4689-b363-7c9960d8fcab",
+                "emitterIndex": 1
+              },
+              {
+                "code": "render.softParticles",
+                "path": "emitters.2.render.softParticles",
+                "message": "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+                "emitterId": "threshold-c9be93e7-f7c9-4713-8e24-95ca7505c167",
+                "emitterIndex": 2
+              }
+            ],
+            "blockers": [],
+            "notes": [
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.1.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.1.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.2.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.2.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              }
+            ]
+          },
+          "three3d": {
+            "backend": "three3d",
+            "status": "supported",
+            "warnings": [],
+            "blockers": []
+          }
+        },
+        "unsupportedModules": [],
+        "partialModules": [],
+        "warnings": [],
+        "notes": [
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+        ]
+      },
+      "validation": {
+        "valid": true,
+        "errors": [],
+        "warnings": [],
+        "infos": [
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.1.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.1.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.2.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.2.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          }
+        ],
+        "blockers": []
+      }
+    }
+  ],
+  "assets": [
+    {
+      "id": "glow",
+      "type": "texture",
+      "path": "glow.png"
+    },
+    {
+      "id": "smoke",
+      "type": "texture",
+      "path": "smoke.png"
+    },
+    {
+      "id": "soft-review-normal",
+      "type": "material",
+      "path": "materials/normal.material"
+    },
+    {
+      "id": "soft-review-additive",
+      "type": "material",
+      "path": "materials/additive.material"
+    },
+    {
+      "id": "soft-review-premultiplied",
+      "type": "material",
+      "path": "materials/premultiplied.material"
+    },
+    {
+      "id": "soft-review-opaque",
+      "type": "material",
+      "path": "materials/opaque.material"
+    },
+    {
+      "id": "soft-review-masked",
+      "type": "material",
+      "path": "materials/masked.material"
+    },
+    {
+      "id": "soft-review-legacy",
+      "type": "material",
+      "path": "materials/legacy.material"
+    },
+    {
+      "id": "box",
+      "type": "mesh",
+      "path": "box.json"
+    }
+  ],
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [
+      {
+        "severity": "warning",
+        "code": "unsupported-module",
+        "path": "emitters.7.modules.trails",
+        "message": "trails has partial runtime export support; validate authored subfields before shipping."
+      }
+    ],
+    "infos": [
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.1.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.1.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.2.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.2.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.3.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.3.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.4.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.4.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.5.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.5.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.6.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.6.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.7.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.7.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.1.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.1.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.2.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.2.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      }
+    ],
+    "blockers": []
+  }
+}

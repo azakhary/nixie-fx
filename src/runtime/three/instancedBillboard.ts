@@ -108,7 +108,9 @@ export class ThreeInstancedBillboardView {
     this.alphaAttribute.setUsage(DynamicDrawUsage);
     this.geometry.setAttribute("aInstanceColor", this.colorAttribute);
     this.geometry.setAttribute("aInstanceAlpha", this.alphaAttribute);
-    this.depthWriteAuthored = resolveParticleDepthWrite(emitter.render);
+    this.depthWriteAuthored =
+      !emitter.render.softParticles.enabled &&
+      resolveParticleDepthWrite(emitter.render);
     this.material = new ShaderMaterial({
       vertexShader: INSTANCED_VERTEX_SHADER,
       fragmentShader: INSTANCED_FRAGMENT_SHADER,
@@ -126,12 +128,15 @@ export class ThreeInstancedBillboardView {
     this.mesh.count = 0;
     this.mesh.visible = false;
     this.mesh.frustumCulled = false;
-    registerBillboardBatchSource(this.mesh);
+    if (!emitter.render.softParticles.enabled)
+      registerBillboardBatchSource(this.mesh);
   }
 
   setRenderState(emitter: ParticleEmitterDefinition): void {
     this.material.depthTest = emitter.render.depthTest;
-    this.depthWriteAuthored = resolveParticleDepthWrite(emitter.render);
+    this.depthWriteAuthored =
+      !emitter.render.softParticles.enabled &&
+      resolveParticleDepthWrite(emitter.render);
     this.material.depthWrite = this.depthWriteAuthored;
     this.material.blending =
       emitter.render.blend === "additive" ? AdditiveBlending : NormalBlending;

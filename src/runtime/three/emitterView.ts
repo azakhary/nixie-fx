@@ -1,3 +1,8 @@
+import { applyThreeSoftParticleMaterial } from "./softParticles";
+import {
+  materialBlendOverridesEmitter,
+  resolveEffectiveParticleBlend,
+} from "../schema/materials";
 import {
   AdditiveBlending,
   BufferGeometry,
@@ -117,6 +122,30 @@ export function createEmitterView(
               emitter,
             )
           : null;
+    const softParticleBinding =
+      !hostMaterial &&
+      options.softParticles &&
+      emitter.render.softParticles.enabled &&
+      !materialBlendOverridesEmitter(
+        resolveEffectiveParticleBlend(
+          emitter.render.blend,
+          material.materialBlend,
+        ),
+      )
+        ? {
+            depth: options.softParticles,
+            settings: emitter.render.softParticles,
+          }
+        : undefined;
+    if (instanced && softParticleBinding) {
+      if (!options.renderAdapter)
+        applyThreeSoftParticleMaterial(
+          instanced.mesh.material as import("three").Material,
+          softParticleBinding.depth,
+          softParticleBinding.settings,
+        );
+      softParticleBinding.depth.track(instanced.mesh);
+    }
     if (instanced) cleanup.push(() => instanced.dispose());
     const trailGeometry = new BufferGeometry();
     cleanup.push(() => trailGeometry.dispose());
@@ -166,6 +195,7 @@ export function createEmitterView(
     return {
       key: emitterViewKey(emitter, hostMaterial ? "host" : material.key),
       staticKey: emitterStaticViewKey(emitter, options, context),
+      softParticleBinding,
       meshes: [],
       instanced,
       particleOrder: new Uint32Array(Math.max(1, emitter.maxParticles)),
@@ -199,6 +229,11 @@ export function createEmitterView(
       missingMaterialRef: hostMaterial ? null : material.missingMaterialRef,
       unsupportedFeatures: [
         ...material.unsupportedFeatures,
+        ...(emitter.render.softParticles.enabled && !options.softParticles
+          ? [
+              "render.softParticles: supply ThreeSoftParticleDepth and call prepare before the host render to enable scene-depth fading.",
+            ]
+          : []),
         ...(trailResolution?.unsupportedFeatures ?? []),
       ],
       hostMaterial: hostMaterial !== null,
@@ -310,6 +345,7 @@ export function emitterStaticViewKey(
       : "",
     materialGraph?.side ?? "double",
     materialGraph?.blend ?? "normal",
+    JSON.stringify(emitter.render.softParticles),
     emitter.render.shading,
     emitter.render.blend,
     Number(emitter.render.depthTest),
@@ -329,6 +365,7 @@ export function emitterViewKey(
     Number(emitter.mesh.flipWinding),
     Number(emitter.mesh.recomputeNormals),
     materialKey,
+    JSON.stringify(emitter.render.softParticles),
     emitter.render.shading,
     emitter.render.blend,
     Number(emitter.render.depthTest),

@@ -1,0 +1,91 @@
+{
+  "app": "vfx-editor",
+  "kind": "scene",
+  "version": 1,
+  "name": "Threshold checkpoints",
+  "ambient": {
+    "source": "gradient",
+    "color": "#8a94a3",
+    "skyColor": "#f7f9ff",
+    "groundColor": "#51606f",
+    "intensity": 1.15
+  },
+  "lights": [
+    {
+      "id": "key-light",
+      "name": "Key Light",
+      "type": "directional",
+      "enabled": true,
+      "color": "#ffffff",
+      "intensity": 2.2,
+      "position": [
+        3,
+        6,
+        5
+      ],
+      "rotation": [
+        -45.81862253888887,
+        30.96375653207352,
+        0
+      ],
+      "range": 0,
+      "decay": 2,
+      "spotAngle": 45,
+      "penumbra": 0.3
+    },
+    {
+      "id": "fill-light",
+      "name": "Fill Light",
+      "type": "directional",
+      "enabled": true,
+      "color": "#9fb9ff",
+      "intensity": 0.55,
+      "position": [
+        -4,
+        2.5,
+        -3
+      ],
+      "rotation": [
+        -26.56505117707799,
+        -126.86989764584402,
+        0
+      ],
+      "range": 0,
+      "decay": 2,
+      "spotAngle": 45,
+      "penumbra": 0.3
+    }
+  ],
+  "props": [
+    {
+      "id": "wall",
+      "name": "Front surface Z = 0",
+      "mesh": "box.json",
+      "visible": true,
+      "position": [
+        0,
+        1,
+        -0.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        8,
+        4,
+        1
+      ]
+    }
+  ],
+  "bloom": {
+    "enabled": false,
+    "threshold": 1,
+    "intensity": 4,
+    "exposure": 0,
+    "scatter": 0.7,
+    "highQualityFiltering": false,
+    "downscale": "quarter"
+  }
+}

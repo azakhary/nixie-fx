@@ -65,6 +65,8 @@ export interface ThreeVfxEmitterRuntimeParameterPatch extends ParticleEmitterRun
 }
 
 export interface ThreeVfxRendererOptions {
+  /** Host-owned opaque depth integration; call prepare before the host render. */
+  softParticles?: import("./softParticles").ThreeSoftParticleDepth;
   /** Explicit drawing adapter. Omit for the legacy WebGL material path. */
   renderAdapter?: import("./renderAdapter").ThreeVfxRenderAdapter;
   scene?: Scene;
@@ -82,6 +84,8 @@ export interface ThreeVfxRendererOptions {
 }
 
 export interface ThreeVfxEffectInstanceOptions {
+  /** Host-owned opaque depth integration; call prepare before the host render. */
+  softParticles?: import("./softParticles").ThreeSoftParticleDepth;
   /** Explicit drawing adapter. Omit for the legacy WebGL material path. */
   renderAdapter?: import("./renderAdapter").ThreeVfxRenderAdapter;
   effect: unknown;

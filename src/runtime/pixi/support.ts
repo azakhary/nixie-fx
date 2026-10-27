@@ -201,6 +201,16 @@ export function collectPixiVfxUnsupportedFeatures(
           "depthWrite renders as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer writing.",
       });
     }
+    if (emitter.render.softParticles.enabled) {
+      unsupported.push({
+        emitterId: emitter.id,
+        emitterIndex,
+        featureKey: "render.softParticles",
+        path: `emitters.${emitterIndex}.render.softParticles`,
+        reason:
+          "Soft particles require Three opaque scene depth. Pixi preserves these settings without applying the fade.",
+      });
+    }
     if (emitter.render.shading === "lit") {
       unsupported.push({
         emitterId: emitter.id,
