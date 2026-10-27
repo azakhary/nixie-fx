@@ -73,3 +73,9 @@ Pixi preserves the settings and reports the feature unavailable.
 
 This is an optional renderer feature, not a depth-read graph node. See the
 [editable project and consumer](../examples/soft-particles/README.md).
+
+Before the next npm release, consumers can pin the public repository to an
+exact commit (`git+https://github.com/azakhary/nixie-fx.git#<full-commit>`).
+The npm `prepare` lifecycle builds the public package entrypoints for Git
+installs. Install scripts and development build dependencies must be allowed;
+no sibling checkout, copied `dist` directory or local tarball is required.

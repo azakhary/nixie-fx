@@ -86,7 +86,8 @@
     "check": "npm run lint && npm run typecheck && npm run source:check && npm test && npm run build && npm run package:smoke",
     "pack:check": "npm run build && npm run package:smoke && node scripts/check-pack.mjs",
     "test:consumers": "npm run build && npm run package:smoke && node scripts/test-clean-consumers.mjs",
-    "prepack": "npm run build && npm run package:smoke"
+    "prepack": "npm run build && npm run package:smoke",
+    "prepare": "npm run build && npm run package:smoke"
   },
   "peerDependencies": {
     "pixi.js": ">=8.19.0 <9.0.0",
