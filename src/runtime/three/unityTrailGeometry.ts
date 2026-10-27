@@ -3,9 +3,10 @@ import type { Vec3, Vec4 } from "../../engine/math";
 import {
   sampleParticleGradientAlpha,
   sampleParticleGradientColor,
-  sampleParticleScalarValue,
   type ParticleEmitterDefinition,
 } from "../../engine/particles";
+import { ParticleScalarValueSampler } from "../../engine/ParticleScalarValueSampler";
+import type { ParticleScalarValue } from "../../engine/particles";
 import { UnityTrailSet } from "../unityTrail";
 import { applyThreeTextureFrame } from "./textureFrames";
 import {
@@ -18,12 +19,31 @@ import type { ParticleSample } from "./rendererState";
 
 const WHITE: Vec4 = [1, 1, 1, 1];
 const segmentA = new Vector3();
-const segmentB = new Vector3();
 const toCamera = new Vector3();
 const sideA = new Vector3();
 const sideB = new Vector3();
 const lastSide = new Vector3(0, 1, 0);
 const lifetimeColor: Vec4 = [1, 1, 1, 1];
+/** Exact prepared width-over-trail sampler, rebuilt when the authored value changes. */
+const widthSamplers = new WeakMap<
+  ParticleScalarValue,
+  { signature: string; sampler: ParticleScalarValueSampler }
+>();
+function widthSampler(value: ParticleScalarValue): ParticleScalarValueSampler {
+  const signature = JSON.stringify(value);
+  let entry = widthSamplers.get(value);
+  if (!entry || entry.signature !== signature) {
+    entry = { signature, sampler: new ParticleScalarValueSampler(value) };
+    widthSamplers.set(value, entry);
+  }
+  return entry.sampler;
+}
+const constantTrailColor: Vec4 = [1, 1, 1, 1];
+const previousDirection = new Vector3();
+const nextDirection = new Vector3();
+/** sRGB → working-space memo: consecutive ribbon points usually repeat colors. */
+const linearInput: Vec4 = [Number.NaN, 0, 0, 0];
+const linearOutput: Vec4 = [1, 1, 1, 1];
 
 /** Begin a Unity-model frame for this view's emitter state generation. */
 export function beginThreeUnityTrails(
@@ -134,6 +154,18 @@ export function drawThreeUnityTrailView(
     );
   const srgb = buffers.srgbColor;
   const rgba = buffers.trailColor;
+  // A gradient whose stops share one RGB needs no per-point color sample.
+  const trailStops = settings.colorOverTrail.colorStops;
+  const constantRgb = trailStops.every(
+    (stop) =>
+      stop.color[0] === trailStops[0]!.color[0] &&
+      stop.color[1] === trailStops[0]!.color[1] &&
+      stop.color[2] === trailStops[0]!.color[2],
+  );
+  if (constantRgb)
+    sampleParticleGradientColor(settings.colorOverTrail, 0, constantTrailColor);
+  linearInput[0] = Number.NaN;
+  const widthOverTrail = widthSampler(settings.widthOverTrail);
   let vertexCount = 0;
   let indexCount = 0;
   for (const trail of set.trails.values()) {
@@ -144,6 +176,7 @@ export function drawThreeUnityTrailView(
     for (let i = 1; i < count; i++) total += centerDistance(centers, i - 1, i);
     if (total <= 1e-7) continue;
     lastSide.set(0, 1, 0);
+    previousDirection.set(0, 0, 0);
     // Color over lifetime depends only on particle age: one sample per trail.
     sampleParticleGradientColor(
       settings.colorOverLifetime,
@@ -163,7 +196,11 @@ export function drawThreeUnityTrailView(
       const cx = centers[c]!;
       const cy = centers[c + 1]!;
       const cz = centers[c + 2]!;
-      sampleParticleGradientColor(settings.colorOverTrail, t, rgba);
+      if (constantRgb) {
+        rgba[0] = constantTrailColor[0];
+        rgba[1] = constantTrailColor[1];
+        rgba[2] = constantTrailColor[2];
+      } else sampleParticleGradientColor(settings.colorOverTrail, t, rgba);
       rgba[0] *= lifetimeColor[0];
       rgba[1] *= lifetimeColor[1];
       rgba[2] *= lifetimeColor[2];
@@ -171,10 +208,22 @@ export function drawThreeUnityTrailView(
         lifetimeColor[3] *
         sampleParticleGradientAlpha(settings.colorOverTrail, t);
       if (!resolution) {
-        srgb.setRGB(rgba[0], rgba[1], rgba[2], SRGBColorSpace);
-        rgba[0] = srgb.r;
-        rgba[1] = srgb.g;
-        rgba[2] = srgb.b;
+        if (
+          rgba[0] !== linearInput[0] ||
+          rgba[1] !== linearInput[1] ||
+          rgba[2] !== linearInput[2]
+        ) {
+          linearInput[0] = rgba[0];
+          linearInput[1] = rgba[1];
+          linearInput[2] = rgba[2];
+          srgb.setRGB(rgba[0], rgba[1], rgba[2], SRGBColorSpace);
+          linearOutput[0] = srgb.r;
+          linearOutput[1] = srgb.g;
+          linearOutput[2] = srgb.b;
+        }
+        rgba[0] = linearOutput[0];
+        rgba[1] = linearOutput[1];
+        rgba[2] = linearOutput[2];
       }
       let r = trail.color[0]! * rgba[0];
       let g = trail.color[1]! * rgba[1];
@@ -201,12 +250,7 @@ export function drawThreeUnityTrailView(
         }
       }
       const halfWidth =
-        0.5 *
-        trail.width *
-        Math.max(
-          0,
-          sampleParticleScalarValue(settings.widthOverTrail, t, trail.seed),
-        );
+        0.5 * trail.width * Math.max(0, widthOverTrail.sample(t, trail.seed));
       toCamera.set(
         camera.position.x - cx,
         camera.position.y - cy,
@@ -215,10 +259,15 @@ export function drawThreeUnityTrailView(
       if (toCamera.lengthSq() <= 1e-14) toCamera.set(0, 0, 1);
       toCamera.normalize();
       // Side is the normalized mean of the adjacent segment sides (head → tail).
+      // Each segment direction is normalized once and reused by both endpoints.
+      const hasPrevious = i > 0 && previousDirection.lengthSq() > 0;
+      if (i < count - 1) segmentDirection(centers, i, i + 1, nextDirection);
+      else nextDirection.set(0, 0, 0);
       sideA.set(0, 0, 0);
-      if (i > 0 && segmentSide(centers, i - 1, i, sideB)) sideA.add(sideB);
-      if (i < count - 1 && segmentSide(centers, i, i + 1, sideB))
+      if (hasPrevious && sideFacing(previousDirection, sideB)) sideA.add(sideB);
+      if (nextDirection.lengthSq() > 0 && sideFacing(nextDirection, sideB))
         sideA.add(sideB);
+      previousDirection.copy(nextDirection);
       if (sideA.lengthSq() <= 1e-14) sideA.copy(lastSide);
       else sideA.normalize();
       lastSide.copy(sideA);
@@ -280,18 +329,23 @@ function centerDistance(centers: Float32Array, a: number, b: number): number {
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-/** Unit side of segment a → b facing `toCamera`; false for degenerate segments. */
-function segmentSide(
+/** Unit direction of segment a → b, or zero for a degenerate segment. */
+function segmentDirection(
   centers: Float32Array,
   a: number,
   b: number,
   out: Vector3,
-): boolean {
+): void {
   segmentA.set(centers[a * 3]!, centers[a * 3 + 1]!, centers[a * 3 + 2]!);
-  segmentB.set(centers[b * 3]!, centers[b * 3 + 1]!, centers[b * 3 + 2]!);
-  segmentB.sub(segmentA);
-  if (segmentB.lengthSq() <= 1e-14) return false;
-  out.crossVectors(segmentB.normalize(), toCamera);
+  out.set(centers[b * 3]!, centers[b * 3 + 1]!, centers[b * 3 + 2]!);
+  out.sub(segmentA);
+  if (out.lengthSq() <= 1e-14) out.set(0, 0, 0);
+  else out.normalize();
+}
+
+/** Unit side of a segment direction facing `toCamera`; false when parallel. */
+function sideFacing(direction: Vector3, out: Vector3): boolean {
+  out.crossVectors(direction, toCamera);
   if (out.lengthSq() <= 1e-14) return false;
   out.normalize();
   return true;
