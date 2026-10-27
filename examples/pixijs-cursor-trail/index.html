@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A pointer-driven NixieFX particle trail running in PixiJS v8."
+    />
+    <title>NixieFX + PixiJS v8 cursor trail</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main id="app" aria-label="NixieFX PixiJS cursor trail demo">
+      <header class="intro">
+        <h1>PixiJS Cursor Trail</h1>
+        <p>Move your pointer</p>
+      </header>
+      <footer class="hud" aria-live="polite">
+        <span id="status">Loading compiled export…</span>
+        <span id="particles">0 particles</span>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
