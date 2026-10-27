@@ -292,7 +292,40 @@ export interface ParticleForceSettings {
   dragValue: ParticleScalarValue;
 }
 
+export interface ParticleSoftParticlesSettings {
+  enabled: boolean;
+  /** Linear camera-space gap to opaque surfaces, in world units. */
+  near: number;
+  far: number;
+}
+
+/** Imported malformed ranges reset together, never produce NaN shader inputs. */
+export function normalizeParticleSoftParticles(
+  value: unknown,
+): ParticleSoftParticlesSettings {
+  const source = isRecord(value) ? value : {};
+  const near = source.near ?? 0;
+  const far = source.far ?? 1;
+  const valid =
+    typeof near === "number" &&
+    Number.isFinite(near) &&
+    near >= 0 &&
+    typeof far === "number" &&
+    Number.isFinite(far) &&
+    far > near &&
+    Number.isFinite(1 / (far - near)) &&
+    Number.isFinite(Math.fround(far)) &&
+    Math.fround(far) > Math.fround(near) &&
+    Number.isFinite(Math.fround(1 / (far - near)));
+  return {
+    enabled: source.enabled === true,
+    near: valid ? near : 0,
+    far: valid ? far : 1,
+  };
+}
+
 export interface ParticleRenderSettings {
+  softParticles: ParticleSoftParticlesSettings;
   blend: ParticleBlendMode;
   /**
    * Surface lighting model. `unlit` keeps classic particle/emissive behavior.
@@ -711,6 +744,7 @@ const DEFAULT_EMITTER: ParticleEmitterDefinition = {
     dragValue: createConstantParticleScalar(0.05, 0, 12),
   },
   render: {
+    softParticles: { enabled: false, near: 0, far: 1 },
     blend: "alpha",
     shading: "unlit",
     depthTest: true,
@@ -1745,6 +1779,7 @@ function normalizeRender(
         ? (source.blend as ParticleBlendMode)
         : "alpha",
     shading: source.shading === "lit" ? "lit" : "unlit",
+    softParticles: normalizeParticleSoftParticles(source.softParticles),
     depthTest: source.depthTest !== false,
     depthWrite: source.depthWrite === true,
     depthInk: source.depthInk !== false,

@@ -1,3 +1,4 @@
+import { applyThreeSoftParticleMaterial } from "./softParticles";
 import {
   Euler,
   Matrix4,
@@ -184,6 +185,10 @@ export class ThreeParticlePresentation {
       material.needsUpdate = true;
     }
 
+    if (view.softParticleBinding) {
+      material.transparent = true;
+      material.depthWrite = false;
+    }
     this.scratchWorld.set(
       sample.position[0],
       sample.position[1],
@@ -325,7 +330,14 @@ export class ThreeParticlePresentation {
       view.material instanceof ShaderMaterial
         ? cloneShaderMaterialSharingTextures(view.material)
         : view.material.clone();
+    if (view.softParticleBinding)
+      applyThreeSoftParticleMaterial(
+        material,
+        view.softParticleBinding.depth,
+        view.softParticleBinding.settings,
+      );
     mesh = new Mesh(view.geometry, material);
+    view.softParticleBinding?.depth.track(mesh);
     mesh.frustumCulled = false;
     view.meshes[index] = mesh;
     this.context.root.add(mesh);

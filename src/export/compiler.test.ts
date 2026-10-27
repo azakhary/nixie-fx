@@ -13,6 +13,29 @@ import {
 import { compileMaterial } from "../runtime/materials";
 
 describe("vfx export compiler", () => {
+  it("preserves per-emitter soft particle settings in compiled effects", () => {
+    const compiled = compileVfxEffect({
+      id: "soft",
+      emitters: [
+        {
+          id: "on",
+          render: { softParticles: { enabled: true, near: 0.25, far: 2 } },
+        },
+        { id: "old" },
+        {
+          id: "bad",
+          render: { softParticles: { enabled: true, near: -1, far: 0 } },
+        },
+      ],
+    });
+    expect(compiled.effect.emitters.map((e) => e.render.softParticles)).toEqual(
+      [
+        { enabled: true, near: 0.25, far: 2 },
+        { enabled: false, near: 0, far: 1 },
+        { enabled: true, near: 0, far: 1 },
+      ],
+    );
+  });
   it("strips scalar editor ranges and preserves runtime module data", () => {
     const source = {
       id: "spark-burst",

@@ -58,6 +58,7 @@ export class ThreeVfxRenderer implements VfxRendererBackend<Object3D | Scene> {
     const instance = new ThreeVfxEffectInstance({
       effect,
       renderAdapter: this.options.renderAdapter,
+      softParticles: this.options.softParticles,
       camera: this.camera,
       textureProvider: this.options.textureProvider,
       meshProvider: this.options.meshProvider,

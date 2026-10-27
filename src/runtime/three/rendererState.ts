@@ -36,6 +36,10 @@ export interface ThreeEmitterDrawParameters {
 }
 
 export interface ThreeEmitterView extends ThreeTrailView {
+  softParticleBinding?: {
+    depth: import("./softParticles").ThreeSoftParticleDepth;
+    settings: import("../../engine/particles").ParticleSoftParticlesSettings;
+  };
   meshes: Mesh[];
   instanced: ThreeVfxInstancedView | null;
   particleOrder: Uint32Array;

@@ -1,3 +1,4 @@
+import { threeNodeSoftParticleFade } from "./softParticles";
 import { sampleNodeTexture } from "./textureSample";
 import { BackSide, DoubleSide, FrontSide, type Texture } from "three";
 import {
@@ -259,6 +260,23 @@ function createNodeMaterial(
           ? T.output
           : T.vec4(nodeLinearColor(T.output).rgb, T.output.a),
       )();
+    }
+    if (
+      !trail &&
+      !ownsBlend &&
+      emitter.render.softParticles.enabled &&
+      options.softParticles
+    ) {
+      const fade = threeNodeSoftParticleFade(
+        options.softParticles,
+        emitter.render.softParticles,
+      );
+      const output = (material.outputNode ?? T.output) as Node4;
+      material.outputNode = T.vec4(
+        material.premultipliedAlpha ? output.rgb.mul(fade) : output.rgb,
+        output.a.mul(fade),
+      );
+      material.depthWrite = false;
     }
     return {
       material,

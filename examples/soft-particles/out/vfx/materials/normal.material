@@ -1,0 +1,59 @@
+{
+  "id": "soft-review-normal",
+  "name": "Review normal",
+  "blend": "normal",
+  "nodes": [],
+  "edges": [],
+  "params": [
+    {
+      "name": "MainTex",
+      "type": "texture",
+      "group": "Texture",
+      "default": "",
+      "scope": "per-material",
+      "builtinRole": "mainTex"
+    },
+    {
+      "name": "Tint",
+      "type": "color",
+      "group": "Color",
+      "default": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "scope": "per-material"
+    },
+    {
+      "name": "Emissive",
+      "type": "float",
+      "group": "Color",
+      "default": 0,
+      "sliderMin": 0,
+      "sliderMax": 4,
+      "clampMin": 0,
+      "clampMax": 16,
+      "scope": "per-material"
+    },
+    {
+      "name": "Opacity",
+      "type": "float",
+      "group": "Color",
+      "default": 1,
+      "sliderMin": 0,
+      "sliderMax": 1,
+      "clampMin": 0,
+      "clampMax": 1,
+      "scope": "per-material"
+    }
+  ],
+  "outputs": {
+    "baseColor": null,
+    "emissive": null,
+    "opacity": null
+  },
+  "builtin": "sprite-master",
+  "colorVersion": 1,
+  "shadingModel": "unlit"
+}

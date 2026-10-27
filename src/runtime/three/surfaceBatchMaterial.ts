@@ -34,7 +34,7 @@ let nextProgram = 0;
 /** Only runtime graph shaders and the stock billboard contract are accepted. */
 export function surfaceProgram(mesh: Mesh): SurfaceProgram | null {
   const m = mesh.material;
-  if (Array.isArray(m)) return null;
+  if (Array.isArray(m) || m.userData.nixieSoftParticles) return null;
   if (
     m instanceof ShaderMaterial &&
     !isBillboardBatchSource(mesh) &&
