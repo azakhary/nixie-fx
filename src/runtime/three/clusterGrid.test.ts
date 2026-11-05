@@ -1,6 +1,6 @@
 import { normalizeParticleEffect } from "../../engine/particles";
 import { ThreeVfxRenderer } from "./renderer";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   OrthographicCamera,
   PerspectiveCamera,
@@ -268,4 +268,65 @@ it("keeps real instance pause, seek, visibility and disposal behavior in cluster
   expect(manager.stats.active).toBe(0);
   manager.dispose();
   host.destroy();
+});
+
+describe("hybrid host light reservations", () => {
+  it("shares the remainder across GPU sources after game/CPU lights and removes stale reservations", () => {
+    const scene = new Scene(),
+      camera = new PerspectiveCamera(60, 1, 0.1, 100);
+    scene.add(new PointLight());
+    const manager = ThreeVfxLightManager.forScene(scene),
+      cluster = backend();
+    const update = vi.spyOn(cluster, "update");
+    manager.setClusterBackend(cluster);
+    manager.setProfile({
+      mode: "clustered",
+      maxLights: 6,
+      totalSceneLights: 6,
+      maxLightsPerCluster: 6,
+    });
+    const cpu = {
+      lightRevision: 0,
+      lightsPaused: false,
+      getLightCandidates: () => [light("cpu-a"), light("cpu-b")],
+    };
+    const a = { requestedLights: 2, writeLights: vi.fn() },
+      b = { requestedLights: 4, writeLights: vi.fn() };
+    const first = {
+      lightRevision: 0,
+      lightsPaused: false,
+      getLightCandidates: () => [],
+      getGpuLightSources: () => [a],
+    };
+    const second = {
+      lightRevision: 0,
+      lightsPaused: false,
+      getLightCandidates: () => [],
+      getGpuLightSources: () => [b],
+    };
+    manager.add(cpu);
+    manager.add(first);
+    manager.add(second);
+    manager.update(1, camera);
+    expect(update.mock.lastCall?.[3]).toEqual([
+      { source: a, offset: 0, count: 2 },
+      { source: b, offset: 2, count: 1 },
+    ]);
+    expect(manager.stats).toMatchObject({
+      budget: 5,
+      active: 5,
+      sceneLights: 1,
+      budgetRejected: 3,
+    });
+    manager.remove(first);
+    manager.update(1, camera);
+    expect(update.mock.lastCall?.[3]).toEqual([
+      { source: b, offset: 0, count: 3 },
+    ]);
+    manager.remove(second);
+    manager.update(1, camera);
+    expect(update.mock.lastCall?.[3]).toEqual([]);
+    expect(manager.stats.active).toBe(2);
+    manager.dispose();
+  });
 });
