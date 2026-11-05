@@ -82,6 +82,26 @@ describe("bounded influence-volume clusters", () => {
     grid.clear();
     expect(grid.indices.every((v) => v === 0)).toBe(true);
   });
+  it("omits an overflowing light over its whole influence instead of cutting surfaces at cell edges", () => {
+    const camera = new OrthographicCamera(-3, 3, 3, -3, 0.1, 100);
+    const grid = new ThreeLightClusterGrid();
+    const a = slot(light("a", [-1, 0, -5], 1));
+    const b = slot(light("b", [0, 0, -5], 1));
+    const c = slot(light("c", [2.5, 0, -5], 0.2));
+    grid.update([b], camera, 1);
+    expect(grid.indices.some(Boolean)).toBe(true);
+    grid.update([a, b, c], camera, 1);
+    expect(grid.indices.some((index) => index === 2)).toBe(false);
+    expect(grid.indices.some((index) => index === 1)).toBe(true);
+    expect(grid.indices.some((index) => index === 3)).toBe(true);
+    expect(grid.stats.overflowLights).toBe(1);
+    expect(grid.stats.contributingLights).toBe(2);
+    grid.update([c, b, a], camera, 1);
+    expect(grid.indices.some((index) => index === 2)).toBe(false);
+    grid.update([a, b, c], camera, 2);
+    expect(grid.indices.some((index) => index === 2)).toBe(true);
+    expect(grid.stats.overflowLights).toBe(0);
+  });
   it("reports invalid cameras without using stale cluster contents", () => {
     const grid = new ThreeLightClusterGrid(),
       camera = new PerspectiveCamera();

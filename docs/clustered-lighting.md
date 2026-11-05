@@ -75,12 +75,15 @@ retain that lighting override rather than being rewritten.
   Exact point attenuation/range is evaluated per fragment, so offscreen source
   centers can illuminate onscreen surfaces. Perspective and orthographic
   cameras require finite near/far planes.
-- Crowded clusters take selected lights in stable identity order, independent
-  of selector array compaction. They do not flicker by random truncation.
-  Overflow is a deliberate hard omission, not an energy-conserving approximation;
-  a light can still contribute in other cells. Reduce influence ranges or raise
-  the per-cluster capacity to relieve it. Conservative bounds can overestimate
-  occupancy; this trades extra evaluations for no missing influence volumes.
+- Admit selected lights in stable identity order, independent of selector array
+  compaction. Each light must fit every cell in its conservative influence volume;
+  if any cell is full, omit that whole light from all cells. This prevents hard
+  cell/depth-slice cuts across surfaces. Overflow is a deliberate whole-light
+  omission, not an energy-conserving approximation; moving lights can change
+  admission. Reduce ranges or raise capacity to relieve it. Conservative bounds
+  can overestimate occupancy. Fixed scratch arrays use another 6.75 KiB.
+  `maxOccupancy` and `overflowClusters` describe demand before admission;
+  `overflowAssignments` counts all entries omitted by whole-light rejection.
 - The fixed lists feed Three's normal lit BRDF and NixieFX's authored
   `sceneDiffuseLighting` graph input. Existing roughness, normals, metallic,
   opacity, transparency, material graphs and bloom remain in their owner paths.
@@ -105,7 +108,7 @@ do not send it through a whole React workspace each frame.
 | frustumCulled | Valid influence spheres entirely outside the camera |
 | budgetRejected | Eligible candidates exceeding global selection capacity |
 | contributingLights | Selected lights with at least one retained cluster assignment |
-| overflowClusters / overflowAssignments / overflowLights | Crowded cells, omitted entries, distinct affected lights |
+| overflowClusters / overflowAssignments / overflowLights | Crowded demand cells, all omitted entries, wholly omitted lights |
 | maxOccupancy | Peak pre-truncation occupancy; includes conservative intersections |
 
 Invalid authored ranges are counted at curve evaluation before they disappear

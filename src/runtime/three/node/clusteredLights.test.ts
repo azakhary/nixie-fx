@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { Scene, DirectionalLight } from "three";
-import { Lighting, type WebGPURenderer } from "three/webgpu";
+import {
+  Lighting,
+  type WebGPURenderer,
+  type LightingNode,
+  type NodeBuilder,
+} from "three/webgpu";
+import * as T from "three/tsl";
 import { createThreeClusteredLighting } from "./clusteredLights";
 
 describe("initialized renderer lighting binding", () => {
@@ -41,6 +47,40 @@ describe("initialized renderer lighting binding", () => {
     const next = createThreeClusteredLighting(renderer, scene);
     next.dispose();
     next.manager.dispose();
+  });
+  it("submits the clustered BRDF function to the shader stack", () => {
+    const lighting = new Lighting();
+    const renderer = {
+      backend: { isWebGPUBackend: true },
+      lighting,
+      _renderLists: { dispose: vi.fn() },
+    } as unknown as WebGPURenderer;
+    const scene = new Scene();
+    const binding = createThreeClusteredLighting(renderer, scene);
+    const contribution = lighting
+      .getNode(scene)
+      .getLights()[0] as unknown as LightingNode;
+    const shaderStack = T.stack();
+    const previousStack = T.getCurrentStack();
+    const reflectedLight = {
+      directDiffuse: T.vec3(0).toVar(),
+      directSpecular: T.vec3(0).toVar(),
+    };
+    try {
+      T.setCurrentStack(shaderStack);
+      contribution.setup({
+        getContext: () => ({ reflectedLight }),
+      } as unknown as NodeBuilder);
+      // Declaring accumulators alone emits no illumination. The lighting call
+      // must be an actual statement even though it has no returned value.
+      expect(
+        shaderStack.nodes.some((node) => "isShaderCallNodeInternal" in node),
+      ).toBe(true);
+    } finally {
+      T.setCurrentStack(previousStack);
+      binding.dispose();
+      binding.manager.dispose();
+    }
   });
   it("never installs clustered shading for WebGL2 fallback", () => {
     const lighting = new Lighting(),

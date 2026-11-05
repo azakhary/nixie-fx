@@ -213,7 +213,7 @@ class ClusterContribution extends LightingNode {
       this.backend.forEachLight((light) =>
         builder.lightsNode.setupDirectLight(builder, this, light),
       );
-    })();
+    }, "void")();
     return undefined;
   }
 }

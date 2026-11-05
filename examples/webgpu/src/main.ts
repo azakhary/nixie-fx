@@ -197,11 +197,7 @@ async function bootstrap() {
       view.append(renderer.domElement);
       const scene = new THREE.Scene(),
         camera = new THREE.OrthographicCamera(-6, 6, 6, -6, 0.01, 1000);
-      camera.position.set(
-        0,
-        0.85 - Math.sin(-0.82) * 12,
-        -Math.cos(-0.82) * 12,
-      );
+      camera.position.set(0, 0.85 - Math.sin(-0.82) * 12, Math.cos(-0.82) * 12);
       camera.lookAt(0, 0.85, 0);
       const orbit = new OrbitControls(camera, renderer.domElement);
       orbit.target.set(0, 0.85, 0);
@@ -494,7 +490,7 @@ async function bootstrap() {
         lastDisplay = now;
         const stats = active.manager.stats;
         el("light-stats").textContent =
-          `Requested ${stats.requestedMode} · active ${stats.mode} · ${active.backend}\n${stats.reason}${stats.capacityClamped ? " Capacity limited to runtime bounds." : ""}\n${stats.candidates} candidates · ${stats.active}/${stats.budget} selected · ${stats.fading} fading · ${stats.sceneLights} game lights · ${stats.budgetReduction} reserved/reduced\n${stats.invalidRanges} invalid ranges · ${stats.invalidCandidates} other invalid · ${stats.budgetRejected} over host budget · ${stats.frustumCulled} influence-culled\n${stats.contributingLights} contributing · cluster peak ${stats.maxOccupancy}/${stats.perClusterCapacity} · ${stats.overflowAssignments} omitted entries / ${stats.overflowClusters} clusters / ${stats.overflowLights} lights`;
+          `Requested ${stats.requestedMode} · active ${stats.mode} · ${active.backend}\n${stats.reason}${stats.capacityClamped ? " Capacity limited to runtime bounds." : ""}\n${stats.candidates} candidates · ${stats.active}/${stats.budget} selected · ${stats.fading} fading · ${stats.sceneLights} game lights · ${stats.budgetReduction} reserved/reduced\n${stats.invalidRanges} invalid ranges · ${stats.invalidCandidates} other invalid · ${stats.budgetRejected} over host budget · ${stats.frustumCulled} influence-culled\n${stats.contributingLights} contributing · cluster peak ${stats.maxOccupancy}/${stats.perClusterCapacity} · ${stats.overflowAssignments} omitted entries / ${stats.overflowClusters} crowded clusters / ${stats.overflowLights} whole lights omitted`;
         if (measurement)
           el("report").textContent =
             sample.elapsed < 0

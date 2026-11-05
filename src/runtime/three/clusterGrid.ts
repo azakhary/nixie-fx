@@ -21,6 +21,8 @@ export class ThreeLightClusterGrid {
     THREE_CLUSTER_COUNT * THREE_CLUSTER_LIMITS.perCluster,
   );
   readonly counts = new Uint16Array(THREE_CLUSTER_COUNT);
+  private readonly admittedCounts = new Uint8Array(THREE_CLUSTER_COUNT);
+  private readonly influenceCells = new Uint16Array(THREE_CLUSTER_COUNT);
   readonly lightData = new Float32Array(THREE_CLUSTER_LIMITS.lights * 8);
   readonly stats = {
     overflowClusters: 0,
@@ -39,6 +41,7 @@ export class ThreeLightClusterGrid {
   clear(): void {
     this.indices.fill(0);
     this.counts.fill(0);
+    this.admittedCounts.fill(0);
     this.lightData.fill(0);
     Object.assign(this.stats, {
       overflowClusters: 0,
@@ -155,7 +158,7 @@ export class ThreeLightClusterGrid {
       const cell = (v: number, n: number) =>
         Math.max(0, Math.min(n - 1, Math.floor((v * 0.5 + 0.5) * n)));
       let overflow = false,
-        contributed = false;
+        cellCount = 0;
       for (let z = slice(depth - radius); z <= slice(depth + radius); z++)
         for (let y = cell(minY, NY); y <= cell(maxY, NY); y++)
           for (let x = cell(minX, NX); x <= cell(maxX, NX); x++) {
@@ -166,18 +169,27 @@ export class ThreeLightClusterGrid {
               this.stats.maxOccupancy,
               count + 1,
             );
-            if (count < cap) {
-              this.indices[cluster * THREE_CLUSTER_LIMITS.perCluster + count] =
-                index + 1;
-              contributed = true;
-            } else {
-              if (count === cap) this.stats.overflowClusters++;
-              this.stats.overflowAssignments++;
-              overflow = true;
-            }
+            if (count === cap) this.stats.overflowClusters++;
+            this.influenceCells[cellCount++] = cluster;
+            if (this.admittedCounts[cluster]! >= cap) overflow = true;
           }
-      if (overflow) this.stats.overflowLights++;
-      if (contributed) this.stats.contributingLights++;
+      // Admit the entire influence volume atomically. Partial admission gives a
+      // light an artificial hard cutoff at cell boundaries, including diagonal
+      // depth-slice cuts across planar mesh faces. Stable identity order keeps
+      // the decision independent of selector slot compaction.
+      if (overflow) {
+        this.stats.overflowLights++;
+        this.stats.overflowAssignments += cellCount;
+        continue;
+      }
+      for (let i = 0; i < cellCount; i++) {
+        const cluster = this.influenceCells[i]!,
+          count = this.admittedCounts[cluster]!;
+        this.indices[cluster * THREE_CLUSTER_LIMITS.perCluster + count] =
+          index + 1;
+        this.admittedCounts[cluster] = count + 1;
+      }
+      if (cellCount > 0) this.stats.contributingLights++;
     }
     return true;
   }
