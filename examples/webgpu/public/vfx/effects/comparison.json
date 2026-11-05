@@ -874,6 +874,11 @@
       "render": {
         "blend": "additive",
         "shading": "unlit",
+        "softParticles": {
+          "enabled": false,
+          "near": 0,
+          "far": 1
+        },
         "depthTest": true,
         "depthWrite": false,
         "depthInk": true,
@@ -889,6 +894,7 @@
         ],
         "opacitySource": "textureAlpha",
         "opacityInvert": false,
+        "drawParticles": true,
         "texture": null,
         "material": {
           "id": "material-instance",
@@ -1393,7 +1399,8 @@
                 "y": 1
               }
             ]
-          }
+          },
+          "axisRandom": "shared"
         },
         "limitVelocityOverLifetime": {
           "separateAxes": false,
@@ -1967,6 +1974,7 @@
           "additive": true
         },
         "trails": {
+          "model": "nixie",
           "material": {
             "id": "material-instance",
             "shaderId": "custom-trail"
@@ -2146,7 +2154,10 @@
           "textureMode": "stretch",
           "texture": null,
           "minVertexDistance": 0.02,
-          "worldSpace": true
+          "worldSpace": true,
+          "sizeAffectsWidth": true,
+          "sizeAffectsLifetime": false,
+          "dieWithParticles": true
         },
         "customData": {
           "label": "",
@@ -3114,6 +3125,11 @@
       "render": {
         "blend": "additive",
         "shading": "unlit",
+        "softParticles": {
+          "enabled": false,
+          "near": 0,
+          "far": 1
+        },
         "depthTest": true,
         "depthWrite": false,
         "depthInk": true,
@@ -3129,6 +3145,7 @@
         ],
         "opacitySource": "textureAlpha",
         "opacityInvert": false,
+        "drawParticles": true,
         "texture": null,
         "material": {
           "id": "material-instance",
@@ -3637,7 +3654,8 @@
                 "y": 1
               }
             ]
-          }
+          },
+          "axisRandom": "shared"
         },
         "limitVelocityOverLifetime": {
           "separateAxes": false,
@@ -4211,6 +4229,7 @@
           "additive": true
         },
         "trails": {
+          "model": "nixie",
           "material": null,
           "depthTest": true,
           "depthWrite": false,
@@ -4387,7 +4406,10 @@
           "textureMode": "stretch",
           "texture": null,
           "minVertexDistance": 0.02,
-          "worldSpace": true
+          "worldSpace": true,
+          "sizeAffectsWidth": true,
+          "sizeAffectsLifetime": false,
+          "dieWithParticles": true
         },
         "customData": {
           "label": "",
@@ -5356,6 +5378,11 @@
       "render": {
         "blend": "additive",
         "shading": "unlit",
+        "softParticles": {
+          "enabled": false,
+          "near": 0,
+          "far": 1
+        },
         "depthTest": true,
         "depthWrite": false,
         "depthInk": true,
@@ -5371,6 +5398,7 @@
         ],
         "opacitySource": "textureAlpha",
         "opacityInvert": false,
+        "drawParticles": true,
         "texture": null,
         "material": null
       },
@@ -5872,7 +5900,8 @@
                 "y": 1
               }
             ]
-          }
+          },
+          "axisRandom": "shared"
         },
         "limitVelocityOverLifetime": {
           "separateAxes": false,
@@ -6446,6 +6475,7 @@
           "additive": true
         },
         "trails": {
+          "model": "nixie",
           "material": null,
           "depthTest": true,
           "depthWrite": false,
@@ -6622,7 +6652,10 @@
           "textureMode": "stretch",
           "texture": null,
           "minVertexDistance": 0.02,
-          "worldSpace": true
+          "worldSpace": true,
+          "sizeAffectsWidth": true,
+          "sizeAffectsLifetime": false,
+          "dieWithParticles": true
         },
         "customData": {
           "label": "",
@@ -7590,6 +7623,11 @@
       "render": {
         "blend": "additive",
         "shading": "unlit",
+        "softParticles": {
+          "enabled": false,
+          "near": 0,
+          "far": 1
+        },
         "depthTest": true,
         "depthWrite": false,
         "depthInk": true,
@@ -7605,6 +7643,7 @@
         ],
         "opacitySource": "textureAlpha",
         "opacityInvert": false,
+        "drawParticles": true,
         "texture": "frames.png",
         "material": {
           "id": "material-instance",
@@ -8109,7 +8148,8 @@
                 "y": 1
               }
             ]
-          }
+          },
+          "axisRandom": "shared"
         },
         "limitVelocityOverLifetime": {
           "separateAxes": false,
@@ -8683,6 +8723,7 @@
           "additive": true
         },
         "trails": {
+          "model": "nixie",
           "material": {
             "id": "material-instance",
             "shaderId": "custom-trail"
@@ -8862,7 +8903,10 @@
           "textureMode": "stretch",
           "texture": null,
           "minVertexDistance": 0.02,
-          "worldSpace": true
+          "worldSpace": true,
+          "sizeAffectsWidth": true,
+          "sizeAffectsLifetime": false,
+          "dieWithParticles": true
         },
         "customData": {
           "label": "",

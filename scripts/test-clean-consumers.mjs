@@ -150,8 +150,10 @@ import {
   type ThreeVfxRendererOptions,
 } from "nixie-fx/three";
 
-import { createThreeNodeAdapter, createThreeWebGpuRenderer, beginThreeWebGpuFrame, disposeThreeWebGpuRenderer, ThreeNodeRenderPipeline } from "nixie-fx/three/webgpu";
+import { createThreeClusteredLighting, THREE_CLUSTER_LIMITS, createThreeNodeAdapter, createThreeWebGpuRenderer, beginThreeWebGpuFrame, disposeThreeWebGpuRenderer, ThreeNodeRenderPipeline } from "nixie-fx/three/webgpu";
 void createThreeWebGpuRenderer;
+void createThreeClusteredLighting;
+void THREE_CLUSTER_LIMITS;
 void beginThreeWebGpuFrame;
 void disposeThreeWebGpuRenderer;
 void ThreeNodeRenderPipeline;
@@ -171,7 +173,8 @@ void repairMirroredGeometryWinding;
 import { createRequire } from "node:module";
 import { ThreeVfxRenderer, ThreeVfxBatcher, ThreeSurfaceBatcher, repairMirroredGeometryWinding } from "nixie-fx/three";
 
-import { createThreeNodeAdapter, createThreeWebGpuRenderer, ThreeNodeRenderPipeline } from "nixie-fx/three/webgpu";
+import { createThreeClusteredLighting, THREE_CLUSTER_LIMITS, createThreeNodeAdapter, createThreeWebGpuRenderer, ThreeNodeRenderPipeline } from "nixie-fx/three/webgpu";
+if (typeof createThreeClusteredLighting !== "function" || THREE_CLUSTER_LIMITS.lights !== 512) throw new Error("Clustered public API is unavailable.");
 if (typeof createThreeNodeAdapter !== "function" || typeof createThreeWebGpuRenderer !== "function" || typeof ThreeNodeRenderPipeline !== "function") throw new Error("Node material public API is unavailable.");
 if (typeof ThreeSurfaceBatcher !== "function" || typeof ThreeVfxBatcher !== "function" || typeof ThreeVfxRenderer !== "function" || typeof repairMirroredGeometryWinding !== "function") {
   throw new Error("Three public API is unavailable.");

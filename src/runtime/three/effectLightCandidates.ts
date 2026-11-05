@@ -14,6 +14,7 @@ import type { ParticleSample } from "./rendererState";
 /** Collects optional light producers separately from rendering surfaces. */
 export class ThreeEffectLightCandidates {
   startedAt = 0;
+  readonly stats = { invalidRanges: 0 };
   private readonly instanceId = createVfxLightInstanceId();
   private readonly candidates: VfxLightCandidate[] = [];
   private readonly worldCandidates: VfxLightCandidate[] = [];
@@ -23,6 +24,7 @@ export class ThreeEffectLightCandidates {
 
   clear(): void {
     this.candidates.length = 0;
+    this.stats.invalidRanges = 0;
   }
 
   getWorldCandidates(): readonly VfxLightCandidate[] {
@@ -82,6 +84,8 @@ export class ThreeEffectLightCandidates {
         loopAge,
         loopAge,
         state.loopRandom,
+        undefined,
+        this.stats,
       );
       if (candidate) this.candidates.push(candidate);
     }
@@ -111,6 +115,7 @@ export class ThreeEffectLightCandidates {
         sample.loopAge,
         sample.seed,
         sample.lightColor,
+        this.stats,
       );
       if (candidate) this.candidates.push(candidate);
     }

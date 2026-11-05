@@ -2,8 +2,276 @@
   "kind": "vfx-manifest",
   "version": 1,
   "generatedAt": "2026-10-09T00:00:00.000Z",
-  "sourceHash": "fnv1a32:e73e4b32",
+  "sourceHash": "fnv1a32:301ff796",
   "effects": [
+    {
+      "id": "cluster-crowded",
+      "name": "Clustered · crowded ranges",
+      "path": "effects/cluster-crowded.json",
+      "sourceEffectFile": "cluster-crowded.json",
+      "sourceEffectId": "cluster-crowded",
+      "sourceHash": "fnv1a32:2cac6017",
+      "support": {
+        "status": "partial",
+        "overall": "partial",
+        "targetProfile": "three-world-3d",
+        "preferredBackend": "three3d",
+        "portableSubset": false,
+        "backends": {
+          "pixi2d": {
+            "backend": "pixi2d",
+            "status": "blocked",
+            "warnings": [
+              {
+                "code": "lightEmission",
+                "path": "emitters.0.lightEmission",
+                "message": "Real scene illumination is Three-only. Pixi ignores Light Emission; legacy Lights tint is preserved.",
+                "emitterId": "warm-sparks-local",
+                "emitterIndex": 0
+              },
+              {
+                "code": "lightEmission",
+                "path": "emitters.1.lightEmission",
+                "message": "Real scene illumination is Three-only. Pixi ignores Light Emission; legacy Lights tint is preserved.",
+                "emitterId": "blue-sparks-world",
+                "emitterIndex": 1
+              }
+            ],
+            "blockers": [
+              {
+                "code": "mode.meshAsset",
+                "path": "emitters.1.mesh.asset",
+                "message": "Mesh particle assets require the Three 3D/world backend; Pixi does not render prepared 3D mesh geometry.",
+                "emitterId": "blue-sparks-world",
+                "emitterIndex": 1
+              }
+            ],
+            "notes": [
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.1.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.1.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              }
+            ]
+          },
+          "three3d": {
+            "backend": "three3d",
+            "status": "partial",
+            "warnings": [
+              {
+                "code": "material.threeAdapter",
+                "path": "emitters.0.render.material",
+                "message": "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
+                "emitterId": "warm-sparks-local",
+                "emitterIndex": 0
+              },
+              {
+                "code": "material.threeAdapter",
+                "path": "emitters.1.render.material",
+                "message": "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
+                "emitterId": "blue-sparks-world",
+                "emitterIndex": 1
+              }
+            ],
+            "blockers": []
+          }
+        },
+        "unsupportedModules": [],
+        "partialModules": [],
+        "warnings": [],
+        "notes": [
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+        ]
+      },
+      "validation": {
+        "valid": true,
+        "errors": [],
+        "warnings": [],
+        "infos": [
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.1.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.1.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          }
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "cluster-distributed",
+      "name": "Clustered · distributed ranges",
+      "path": "effects/cluster-distributed.json",
+      "sourceEffectFile": "cluster-distributed.json",
+      "sourceEffectId": "cluster-distributed",
+      "sourceHash": "fnv1a32:9e32b597",
+      "support": {
+        "status": "partial",
+        "overall": "partial",
+        "targetProfile": "three-world-3d",
+        "preferredBackend": "three3d",
+        "portableSubset": false,
+        "backends": {
+          "pixi2d": {
+            "backend": "pixi2d",
+            "status": "blocked",
+            "warnings": [
+              {
+                "code": "lightEmission",
+                "path": "emitters.0.lightEmission",
+                "message": "Real scene illumination is Three-only. Pixi ignores Light Emission; legacy Lights tint is preserved.",
+                "emitterId": "warm-sparks-local",
+                "emitterIndex": 0
+              },
+              {
+                "code": "lightEmission",
+                "path": "emitters.1.lightEmission",
+                "message": "Real scene illumination is Three-only. Pixi ignores Light Emission; legacy Lights tint is preserved.",
+                "emitterId": "blue-sparks-world",
+                "emitterIndex": 1
+              }
+            ],
+            "blockers": [
+              {
+                "code": "mode.meshAsset",
+                "path": "emitters.1.mesh.asset",
+                "message": "Mesh particle assets require the Three 3D/world backend; Pixi does not render prepared 3D mesh geometry.",
+                "emitterId": "blue-sparks-world",
+                "emitterIndex": 1
+              }
+            ],
+            "notes": [
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.0.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.1.render.depthTest",
+                "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              },
+              {
+                "code": "unsupported-module",
+                "path": "emitters.1.render.depthInk",
+                "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+              }
+            ]
+          },
+          "three3d": {
+            "backend": "three3d",
+            "status": "partial",
+            "warnings": [
+              {
+                "code": "material.threeAdapter",
+                "path": "emitters.0.render.material",
+                "message": "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
+                "emitterId": "warm-sparks-local",
+                "emitterIndex": 0
+              },
+              {
+                "code": "material.threeAdapter",
+                "path": "emitters.1.render.material",
+                "message": "Custom Three materials require a materialGraphProvider. WebGPU and Three WebGL2 fallback also require the nixie-fx/three/webgpu node adapter; unsupported nodes produce actionable diagnostics.",
+                "emitterId": "blue-sparks-world",
+                "emitterIndex": 1
+              }
+            ],
+            "blockers": []
+          }
+        },
+        "unsupportedModules": [],
+        "partialModules": [],
+        "warnings": [],
+        "notes": [
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+          "[pixi2d] depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering."
+        ]
+      },
+      "validation": {
+        "valid": true,
+        "errors": [],
+        "warnings": [],
+        "infos": [
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.0.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.1.render.depthTest",
+            "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          },
+          {
+            "severity": "info",
+            "code": "unsupported-module",
+            "path": "emitters.1.render.depthInk",
+            "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+            "backend": "pixi2d"
+          }
+        ],
+        "blockers": []
+      }
+    },
     {
       "id": "webgpu-comparison",
       "name": "WebGPU · custom surfaces and lights",
@@ -794,11 +1062,6 @@
   ],
   "assets": [
     {
-      "id": "frames",
-      "type": "texture",
-      "path": "frames.png"
-    },
-    {
       "id": "animated-surface",
       "type": "material",
       "path": "materials/animated-surface.material"
@@ -814,14 +1077,19 @@
       "path": "materials/lit-mesh.material"
     },
     {
-      "id": "atlas-surface",
-      "type": "material",
-      "path": "materials/atlas-surface.material"
-    },
-    {
       "id": "box",
       "type": "mesh",
       "path": "box.json"
+    },
+    {
+      "id": "frames",
+      "type": "texture",
+      "path": "frames.png"
+    },
+    {
+      "id": "atlas-surface",
+      "type": "material",
+      "path": "materials/atlas-surface.material"
     },
     {
       "id": "scene-read",
@@ -876,6 +1144,62 @@
       }
     ],
     "infos": [
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.1.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.1.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.0.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.1.render.depthTest",
+        "message": "depthTest exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
+      {
+        "severity": "info",
+        "code": "unsupported-module",
+        "path": "emitters.1.render.depthInk",
+        "message": "depthInk exports as deterministic Pixi 2.5D draw-order/ink semantics, not GPU depth-buffer rendering.",
+        "backend": "pixi2d"
+      },
       {
         "severity": "info",
         "code": "unsupported-module",

@@ -18,6 +18,7 @@ export interface VfxLightCandidate {
 export interface VfxLightProducer {
   readonly lightRevision: number;
   readonly lightsPaused: boolean;
+  readonly lightCandidateStats?: { invalidRanges: number };
   getLightCandidates(): readonly VfxLightCandidate[];
 }
 let nextInstance = 0;
@@ -34,6 +35,7 @@ export function evaluateVfxLight(
   loopAge: number,
   seed: number,
   particleColor?: readonly [number, number, number, number],
+  diagnostics?: { invalidRanges: number },
 ): VfxLightCandidate | null {
   if (
     settings.version !== 1 ||
@@ -55,6 +57,8 @@ export function evaluateVfxLight(
       ? inherited[3]
       : sampleParticleGradientAlpha(settings.color, age));
   const radius = sampleParticleScalarValue(settings.radius, age, seed, loopAge);
+  if ((!Number.isFinite(radius) || radius <= 0) && diagnostics)
+    diagnostics.invalidRanges++;
   if (
     !Number.isFinite(intensity) ||
     intensity <= 0 ||

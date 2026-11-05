@@ -12,3 +12,6 @@ export {
   ThreeNodeRenderPipeline,
 } from "./runtime/three/node/pipeline";
 export type { ThreeActiveNodeBackend } from "./runtime/three/node/pipeline";
+
+export { createThreeClusteredLighting } from "./runtime/three/node/clusteredLights";
+export { THREE_CLUSTER_LIMITS } from "./runtime/three/clusterGrid";

@@ -119,7 +119,17 @@ export function createSceneGraphInputs(): NonNullable<
           }
         }
       }
-      return T.vec4(sum.div(Math.PI), 1);
+      const clustered = builder.lightsNode as typeof builder.lightsNode & {
+        getClusterDiffuse?: () => Node<"vec3">;
+      };
+      const diffuse =
+        kind === "sceneDiffuseLighting"
+          ? clustered.getClusterDiffuse?.()
+          : undefined;
+      return T.vec4(
+        diffuse ? sum.div(Math.PI).add(diffuse) : sum.div(Math.PI),
+        1,
+      );
     })();
   return {
     mainLightDirection: read("mainLightDirection"),

@@ -52,3 +52,17 @@ Regenerate from the editor's editable fixture using its
 `scripts/export-webgpu-review.mjs <this-example>/public` command after saving.
 See [runtime matrix](../../docs/webgpu.md) and `public/results.json`. The human
 reviewer records and attaches video; this app does not capture it.
+
+## Clustered implementation review (WA-2216)
+
+Use the paired `codex/2216-clustered-particle-lighting` runtime/editor branches
+and pack/install the runtime locally; the published dependency does not include
+this API. Re-export the editor `docs/qa/webgpu` project with its existing export
+script. Open `http://127.0.0.1:8085/?clustered=1` for the distributed preset.
+The lighting mode, total scene capacity and per-cluster controls never modify
+the exported effect. Crowded ranges and three instances exercise bounded
+overflow; forced WebGL2 reports the small-budget fallback.
+
+See `../../docs/clustered-lighting.md` for integration, fixed allocation limits,
+stable overflow policy, diagnostics and the sustained measurement protocol.
+The polished showcase and physical-device budget certification are deferred.

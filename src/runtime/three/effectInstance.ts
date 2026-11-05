@@ -51,6 +51,9 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   get lightsPaused(): boolean {
     return this.paused;
   }
+  get lightCandidateStats() {
+    return this.lightCandidates.stats;
+  }
   getLightCandidates() {
     return this.lightCandidates.getWorldCandidates();
   }

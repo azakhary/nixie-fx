@@ -148,7 +148,13 @@ async function start() {
       .support.backends.three3d;
     el("support").textContent =
       `Three export: ${support.status}. ` +
-      [...new Set([...support.warnings, ...support.blockers].map((item) => item.message))].join(" ");
+      [
+        ...new Set(
+          [...support.warnings, ...support.blockers].map(
+            (item) => item.message,
+          ),
+        ),
+      ].join(" ");
     const definition = structuredClone(authored);
     const instance = vfx.createEffect(definition, { seed: 1234 });
     for (let t = 0; t < 3; t += 1 / 60) vfx.update(1 / 60);
@@ -225,8 +231,12 @@ async function start() {
         el("status").textContent =
           `Actual backend: ${node?.backend ?? "webgl"} · Three r${THREE.REVISION} · ${vfx.stats.visibleParticles} particles · Depth passes: ${depth.stats.passes} · Frame ${(dt * 1000).toFixed(1)} ms · Update ${(b - a).toFixed(2)} ms · Render ${(c - b).toFixed(2)} ms · Seed 1234${paused ? " · Paused" : ""}`;
         el("runtime").textContent = [
-          ...vfx.stats.missingMeshRefs.map((ref) => `Missing mesh: ${ref.path}`),
-          ...vfx.stats.missingMaterialRefs.map((ref) => `Missing material: ${ref}`),
+          ...vfx.stats.missingMeshRefs.map(
+            (ref) => `Missing mesh: ${ref.path}`,
+          ),
+          ...vfx.stats.missingMaterialRefs.map(
+            (ref) => `Missing material: ${ref}`,
+          ),
           ...vfx.stats.unsupportedFeatures,
         ].join(" · ");
       }

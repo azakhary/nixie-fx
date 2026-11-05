@@ -21,6 +21,7 @@ import {
 import {
   disposeThreeWebGpuRenderer,
   createThreeNodeAdapter,
+  createThreeClusteredLighting,
   createThreeWebGpuRenderer,
   ThreeNodeRenderPipeline,
 } from "nixie-fx/three/webgpu";
@@ -63,7 +64,16 @@ let injectInit = false;
 let measurement:
   | {
       start: number;
-      samples: { frame: number; sim: number; render: number; work: number }[];
+      warmup: number;
+      duration: number;
+      samples: {
+        frame: number;
+        sim: number;
+        lights: number;
+        render: number;
+        work: number;
+        elapsed: number;
+      }[];
     }
   | undefined;
 function fail(error: unknown) {
@@ -101,7 +111,14 @@ async function bootstrap() {
     const option = new Option(entry.name, entry.id);
     effectSelect.add(option);
   }
-  effectSelect.value = "webgpu-comparison";
+  const clusteredReview = new URLSearchParams(location.search).has("clustered");
+  effectSelect.value = clusteredReview
+    ? "cluster-distributed"
+    : "webgpu-comparison";
+  if (clusteredReview) {
+    select.value = "webgpu";
+    el<HTMLSelectElement>("light-mode").value = "clustered";
+  }
   const graphs = new Map<string, ShaderGraph>(),
     textures = new Map<string, THREE.Texture>(),
     geometries = new Map<string, THREE.BufferGeometry>();
@@ -194,6 +211,9 @@ async function bootstrap() {
         camera.zoom = cameraState.zoom;
       }
       orbit.update();
+      orbit.addEventListener("start", () => {
+        measurement = undefined;
+      });
       releases.push(() => orbit.dispose());
       const lights = createThreeSceneLights(sceneDefinition);
       scene.add(lights.group);
@@ -229,6 +249,11 @@ async function bootstrap() {
         Number(el<HTMLSelectElement>("budget").value) as ThreeVfxLightBudget,
       );
       releases.push(() => manager.dispose());
+      if (node) {
+        const clustered = createThreeClusteredLighting(node.renderer, scene);
+        releases.push(() => clustered.dispose());
+      }
+      applyLightProfile(manager);
       const definition = bundle.effectsById.get(effectSelect.value)!;
       const hosts: ThreeVfxRenderer[] = [];
       for (
@@ -355,24 +380,72 @@ async function bootstrap() {
         dt = paused ? 0 : Math.min(frameMs / 1000, 0.05);
       time += dt;
       for (const host of active.hosts) host.update(dt);
+      const simEnd = performance.now();
       active.manager.update(dt, active.camera);
       const draw = performance.now();
       active.render();
       const end = performance.now();
       const sample = {
         frame: frameMs,
-        sim: draw - begin,
+        sim: simEnd - begin,
+        lights: draw - simEnd,
+        elapsed: measurement
+          ? (now - measurement.start - measurement.warmup * 1000) / 1000
+          : 0,
         render: end - draw,
         work: end - begin,
       };
-      if (measurement && frameMs > 0) {
+      if (measurement && frameMs > 0 && sample.elapsed >= 0) {
+        if (measurement.samples.length >= 120000) {
+          throw new Error(
+            "Measurement exceeded its bounded 120,000-sample capacity. Reduce duration and retry.",
+          );
+        }
         measurement.samples.push(sample);
-        if (now - measurement.start >= 30000) {
+        if (sample.elapsed >= measurement.duration) {
           const a = measurement.samples,
             sorted = a.map((s) => s.frame).sort((a, b) => a - b);
           el("report").textContent = JSON.stringify(
             {
               date: new Date().toISOString(),
+              hardwareGpuOs:
+                el<HTMLInputElement>("device").value || "UNRECORDED",
+              thermalObservation:
+                el<HTMLInputElement>("thermal").value ||
+                "UNRECORDED — add after run",
+              warmupSeconds: measurement.warmup,
+              camera: {
+                position: active.camera.position.toArray(),
+                target: active.orbit.target.toArray(),
+                zoom: active.camera.zoom,
+              },
+              materialPaths: manifest.assets
+                .filter((a) => a.type === "material")
+                .map((a) => a.path),
+              authoredLightRanges: active.definition.emitters.map((e) => ({
+                emitter: e.id,
+                radius: e.lightEmission?.radius,
+                blend: e.render.blend,
+              })),
+              timingBuckets: Array.from(
+                { length: Math.ceil(measurement.duration / 30) },
+                (_, i) => {
+                  const bucket = a.filter(
+                    (s) => s.elapsed >= i * 30 && s.elapsed < (i + 1) * 30,
+                  );
+                  return {
+                    startSeconds: i * 30,
+                    samples: bucket.length,
+                    frameMaxMs: bucket.reduce(
+                      (n, s) => Math.max(n, s.frame),
+                      0,
+                    ),
+                    meanFrameMs:
+                      bucket.reduce((n, s) => n + s.frame, 0) /
+                      Math.max(1, bucket.length),
+                  };
+                },
+              ),
               userAgent: navigator.userAgent,
               backend: active.backend,
               three: "0.184.0",
@@ -391,15 +464,23 @@ async function bootstrap() {
               ),
               lights: active.manager.stats,
               bloom: el<HTMLInputElement>("bloom").checked,
-              durationSeconds: (now - measurement.start) / 1000,
+              durationSeconds: sample.elapsed,
               samples: a.length,
               fpsLow: 1000 / sorted[sorted.length - 1]!,
               frameMaxMs: sorted[sorted.length - 1],
               frameP99Ms: sorted[Math.floor(sorted.length * 0.99)],
-              simulationMaxMs: Math.max(...a.map((s) => s.sim)),
-              renderSubmissionMaxMs: Math.max(...a.map((s) => s.render)),
+              simulationMaxMs: a.reduce((n, s) => Math.max(n, s.sim), 0),
+              renderSubmissionMaxMs: a.reduce(
+                (n, s) => Math.max(n, s.render),
+                0,
+              ),
+              lightSelectionClusterMaxMs: a.reduce(
+                (n, s) => Math.max(n, s.lights),
+                0,
+              ),
               editorMs: 0,
-              totalWorkMaxMs: Math.max(...a.map((s) => s.work)),
+              gpuMs: "not measured",
+              totalWorkMaxMs: a.reduce((n, s) => Math.max(n, s.work), 0),
               below90fps: a.filter((s) => s.frame > 1000 / 90).length,
               above13ms: a.filter((s) => s.frame > 13).length,
             },
@@ -412,8 +493,15 @@ async function bootstrap() {
       if (now - lastDisplay > 250) {
         lastDisplay = now;
         const stats = active.manager.stats;
+        el("light-stats").textContent =
+          `Requested ${stats.requestedMode} · active ${stats.mode} · ${active.backend}\n${stats.reason}${stats.capacityClamped ? " Capacity limited to runtime bounds." : ""}\n${stats.candidates} candidates · ${stats.active}/${stats.budget} selected · ${stats.fading} fading · ${stats.sceneLights} game lights · ${stats.budgetReduction} reserved/reduced\n${stats.invalidRanges} invalid ranges · ${stats.invalidCandidates} other invalid · ${stats.budgetRejected} over host budget · ${stats.frustumCulled} influence-culled\n${stats.contributingLights} contributing · cluster peak ${stats.maxOccupancy}/${stats.perClusterCapacity} · ${stats.overflowAssignments} omitted entries / ${stats.overflowClusters} clusters / ${stats.overflowLights} lights`;
+        if (measurement)
+          el("report").textContent =
+            sample.elapsed < 0
+              ? `Warming up: ${Math.ceil(-sample.elapsed)} seconds remaining`
+              : `Measuring: ${sample.elapsed.toFixed(0)} / ${measurement.duration} seconds`;
         el("stats").textContent =
-          `${(1000 / (frameMs || 1)).toFixed(1)} FPS · frame ${frameMs.toFixed(2)} ms · sim/preparation/light selection ${sample.sim.toFixed(2)} ms · render CPU ${sample.render.toFixed(2)} ms · editor 0 ms · total work ${sample.work.toFixed(2)} ms\n${active.hosts.reduce((n, h) => n + h.stats.activeParticles, 0)} particles · ${stats.active}/${stats.budget} VFX lights · ${stats.sceneLights} host lights · ${stats.candidates} candidates · t=${time.toFixed(2)} · seed=${seed}\n${active.renderer.domElement.width}×${active.renderer.domElement.height} · DPR ${devicePixelRatio}. Render CPU is submission, not GPU time.`;
+          `${(1000 / (frameMs || 1)).toFixed(1)} FPS · frame ${frameMs.toFixed(2)} ms · sim/preparation ${sample.sim.toFixed(2)} ms · lights/clusters ${sample.lights.toFixed(2)} ms · render CPU ${sample.render.toFixed(2)} ms · editor 0 ms · total work ${sample.work.toFixed(2)} ms\n${active.hosts.reduce((n, h) => n + h.stats.activeParticles, 0)} particles · ${stats.active}/${stats.budget} VFX lights · ${stats.sceneLights} host lights · ${stats.candidates} candidates · t=${time.toFixed(2)} · seed=${seed}\n${active.renderer.domElement.width}×${active.renderer.domElement.height} · DPR ${devicePixelRatio}. Render CPU is submission, not GPU time.`;
       }
       raf = requestAnimationFrame(frame);
     } catch (error) {
@@ -454,12 +542,21 @@ async function bootstrap() {
     el("pause").textContent = "Play";
     void start();
   };
-  el<HTMLSelectElement>("budget").onchange = () =>
-    active?.manager.setBudget(
-      Number(el<HTMLSelectElement>("budget").value) as ThreeVfxLightBudget,
-    );
+  for (const id of ["budget", "light-mode", "capacity", "per-cluster"])
+    el<HTMLInputElement>(id).onchange = () => {
+      measurement = undefined;
+      if (active) applyLightProfile(active.manager);
+    };
+  el("small").onclick = () => {
+    el<HTMLSelectElement>("light-mode").value = "small";
+    measurement = undefined;
+    if (active) applyLightProfile(active.manager);
+  };
   el<HTMLSelectElement>("instances").onchange = () => void start();
-  el<HTMLInputElement>("bloom").onchange = () => active?.setBloom();
+  el<HTMLInputElement>("bloom").onchange = () => {
+    measurement = undefined;
+    active?.setBloom();
+  };
   el<HTMLInputElement>("tint").onchange = () => {
     const hex = el<HTMLInputElement>("tint").value;
     const color = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
@@ -480,9 +577,19 @@ async function bootstrap() {
     void start();
   };
   el("measure").onclick = () => {
-    measurement = { start: performance.now(), samples: [] };
-    el("report").textContent =
-      "Measuring 30 seconds; keep visible. Warm up for at least 10 seconds first.";
+    measurement = {
+      start: performance.now(),
+      samples: [],
+      warmup: Math.max(
+        0,
+        Math.min(120, Number(el<HTMLInputElement>("warmup").value) || 0),
+      ),
+      duration: Math.max(
+        30,
+        Math.min(600, Number(el<HTMLInputElement>("duration").value) || 300),
+      ),
+    };
+    el("report").textContent = "Warming up; keep the page visible.";
   };
   el("initfail").onclick = () => {
     injectInit = true;
@@ -511,3 +618,25 @@ async function bootstrap() {
   await start();
 }
 void bootstrap().catch(fail);
+
+function applyLightProfile(manager: ThreeVfxLightManager) {
+  const mode = el<HTMLSelectElement>("light-mode").value;
+  const capacity = Number(el<HTMLInputElement>("capacity").value);
+  manager.setProfile(
+    mode === "clustered"
+      ? {
+          mode,
+          maxLights: capacity,
+          totalSceneLights: capacity,
+          maxLightsPerCluster: Number(
+            el<HTMLInputElement>("per-cluster").value,
+          ),
+        }
+      : {
+          mode: "small",
+          maxLights: Number(
+            el<HTMLSelectElement>("budget").value,
+          ) as ThreeVfxLightBudget,
+        },
+  );
+}

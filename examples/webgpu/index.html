@@ -121,8 +121,75 @@
         </select></label
       ><label><input id="bloom" type="checkbox" />Bloom</label
       ><label>Tint<input id="tint" type="color" value="#3399ff" /></label
-      ><button id="measure">Measure 30 seconds</button>
+      ><button id="measure">Start measurement</button>
     </aside>
+    <aside>
+      <label
+        >Lighting<select id="light-mode">
+          <option value="small">Small budget</option>
+          <option value="clustered">Clustered (experimental)</option>
+        </select></label
+      >
+      <label
+        >Total scene capacity<input
+          id="capacity"
+          type="number"
+          min="0"
+          max="512"
+          value="128"
+      /></label>
+      <label
+        >Per cluster<input
+          id="per-cluster"
+          type="number"
+          min="1"
+          max="64"
+          value="16"
+      /></label>
+      <button id="small">Use small budget</button>
+      <span
+        >Capacities are test settings, not supported device
+        recommendations.</span
+      >
+    </aside>
+    <pre id="light-stats" role="status"></pre>
+    <details>
+      <summary>Sustained measurement setup</summary>
+      <aside>
+        <label
+          >Device / GPU / OS<input
+            id="device"
+            placeholder="Enter physical hardware and OS"
+        /></label>
+        <label
+          >Warmup seconds<input
+            id="warmup"
+            type="number"
+            min="0"
+            max="120"
+            value="60"
+        /></label>
+        <label
+          >Sample seconds<input
+            id="duration"
+            type="number"
+            min="30"
+            max="600"
+            value="300"
+        /></label>
+        <label
+          >Thermal notes<input
+            id="thermal"
+            placeholder="Record observations after the run"
+        /></label>
+      </aside>
+      <p>
+        Keep the same camera, preset, resolution and bloom for comparisons.
+        Browser timing is CPU submission, not GPU timing. Runs stop on hidden
+        tabs or setting changes. Record thermal observations manually; timing
+        buckets show degradation over time.
+      </p>
+    </details>
     <pre id="stats"></pre>
     <pre id="report"></pre>
     <details>
