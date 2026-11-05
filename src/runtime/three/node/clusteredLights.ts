@@ -4,8 +4,6 @@ import {
   RGBAFormat,
   RGBAIntegerFormat,
   UnsignedIntType,
-  Matrix4,
-  Vector2,
   type Camera,
   type Object3D,
   type Scene,
@@ -104,8 +102,6 @@ class ClusterBackend implements ThreeVfxClusterBackend {
     RGBAIntegerFormat,
     UnsignedIntType,
   );
-  readonly projection = T.uniform(new Matrix4());
-  readonly depth = T.uniform(new Vector2(0.1, 1000));
   readonly enabled = T.uniform(0);
   constructor(readonly supported: boolean) {
     this.reason = supported
@@ -119,8 +115,6 @@ class ClusterBackend implements ThreeVfxClusterBackend {
   ): boolean {
     const valid = this.supported && this.grid.update(slots, camera, perCluster);
     this.enabled.value = valid ? 1 : 0;
-    this.projection.value.copy(camera.projectionMatrix);
-    this.depth.value.set(this.grid.near, this.grid.far);
     this.lights.needsUpdate = this.indices.needsUpdate = true;
     return valid;
   }
@@ -141,7 +135,7 @@ class ClusterBackend implements ThreeVfxClusterBackend {
     }) => void,
   ): void {
     T.If(this.enabled.greaterThan(0), () => {
-      const projected = this.projection.mul(T.vec4(T.positionView, 1));
+      const projected = T.cameraProjectionMatrix.mul(T.vec4(T.positionView, 1));
       const uv = projected.xy.div(projected.w).mul(0.5).add(0.5);
       const xy = T.vec2(
         uv.mul(T.vec2(THREE_CLUSTER_LIMITS.x, THREE_CLUSTER_LIMITS.y)).floor(),
@@ -149,13 +143,14 @@ class ClusterBackend implements ThreeVfxClusterBackend {
         T.vec2(0),
         T.vec2(THREE_CLUSTER_LIMITS.x - 1, THREE_CLUSTER_LIMITS.y - 1),
       );
+      const near = T.cameraNear.max(0.0001);
       const z = T.float(
         T.positionView.z
           .negate()
-          .max(this.depth.x)
-          .div(this.depth.x)
+          .max(near)
+          .div(near)
           .log()
-          .div(this.depth.y.div(this.depth.x).log())
+          .div(T.cameraFar.div(near).log())
           .mul(THREE_CLUSTER_LIMITS.z)
           .floor(),
       ).clamp(0, THREE_CLUSTER_LIMITS.z - 1);
