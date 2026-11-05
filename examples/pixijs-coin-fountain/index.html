@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NixieFX + PixiJS v8 reward coin fountain</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main id="app">
+      <section class="reward" aria-label="Daily reward">
+        <p class="reward-title">Daily reward</p>
+        <p class="reward-amount">120 coins</p>
+        <button id="claim" type="button" disabled>Claim reward</button>
+      </section>
+      <footer class="hud">
+        <span id="status">Loading compiled export…</span>
+        <span id="particles">0 coins</span>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
