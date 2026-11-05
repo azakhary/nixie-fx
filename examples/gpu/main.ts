@@ -26,6 +26,8 @@ const json = async (url: string) => {
   return r.json();
 };
 try {
+  let paused = false,
+    stopped = false;
   const manifest = parseVfxExportManifest(await json("/vfx/manifest.json"));
   const effectsByPath = Object.fromEntries(
     await Promise.all(
@@ -59,6 +61,7 @@ try {
     forceWebGL: query.has("fallback"),
     onDeviceLost: (message) => {
       paused = true;
+      stopped = true;
       status.textContent = `${message}\nReload to recreate buffers; authored export is unchanged.`;
     },
   });
@@ -94,8 +97,7 @@ try {
     seed: 42,
   });
   clustered.manager.add(instance);
-  let paused = false,
-    seeking: { time: number; target: number } | undefined;
+  let seeking: { time: number; target: number } | undefined;
   select.onchange = () => {
     clustered.manager.remove(instance);
     runtime.removeEffect(instance);
@@ -108,8 +110,10 @@ try {
   };
   document.querySelector<HTMLButtonElement>("#pause")!.onclick = () => {
     paused = !paused;
-    if (paused) instance.pause();
-    else instance.play();
+    if (!seeking) {
+      if (paused) instance.pause();
+      else instance.play();
+    }
   };
   document.querySelector<HTMLButtonElement>("#restart")!.onclick = () => {
     seeking = undefined;
@@ -132,6 +136,7 @@ try {
     displayed = 0,
     raf = 0;
   function frame(now: number) {
+    if (stopped) return;
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     beginThreeWebGpuFrame(renderer);
@@ -165,7 +170,7 @@ try {
   }
   const visibility = () => {
     cancelAnimationFrame(raf);
-    if (!document.hidden) {
+    if (!document.hidden && !stopped) {
       last = performance.now();
       raf = requestAnimationFrame(frame);
     }
