@@ -1,0 +1,17 @@
+{
+  "app": "vfx-editor",
+  "kind": "project",
+  "version": 1,
+  "id": "vfx-pixijs-cursor-trail-example",
+  "name": "PixiJS cursor trail",
+  "settings": {
+    "effectDataPath": "effects",
+    "outputPath": "public/vfx",
+    "assetRootPath": "assets",
+    "materialsFolder": "materials",
+    "allowExternalOutput": false,
+    "lastEffectFile": "cursor-trail.json"
+  },
+  "createdAt": "2026-10-02T00:00:00.000Z",
+  "updatedAt": "2026-10-02T00:00:00.000Z"
+}
