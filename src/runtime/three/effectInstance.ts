@@ -1,3 +1,5 @@
+import { resolveParticleSimulation } from "../../engine/particleSimulation";
+import type { ThreeGpuEmitter } from "./renderAdapter";
 import { BufferGeometry, Group, type Camera } from "three";
 import type { Vec3 } from "../../engine/math";
 import {
@@ -54,12 +56,32 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   get lightCandidateStats() {
     return this.lightCandidates.stats;
   }
+  getGpuLightSources() {
+    let attachedToScene = false;
+    for (
+      let node: import("three").Object3D | null = this.root;
+      node;
+      node = node.parent
+    ) {
+      if (!node.visible) return [];
+      if ((node as import("three").Scene).isScene) attachedToScene = true;
+    }
+    if (!attachedToScene) return [];
+    return [...this.gpuEmitters.values()].flatMap((e) =>
+      e.lightSource && e.active ? [e.lightSource] : [],
+    );
+  }
   getLightCandidates() {
     return this.lightCandidates.getWorldCandidates();
   }
   readonly stats: ThreeVfxEffectStats = createEmptyEffectStats();
 
   private effect: ParticleEffectDefinition;
+  private readonly gpuEmitters = new Map<string, ThreeGpuEmitter>();
+  private simulationMessages: string[] = [];
+  get hasGpuSimulation(): boolean {
+    return this.gpuEmitters.size > 0;
+  }
   private readonly runner: ParticleEffectRunner;
   private readonly emitterViews: ThreeEmitterView[] = [];
   private readonly debugTransforms: ThreeVfxParticleDebugTransform[] = [];
@@ -155,7 +177,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     });
     this.effect = normalizeThreeVfxEffect(options.effect);
     this.camera = options.camera;
-    this.runner = new ParticleEffectRunner(this.effect);
+    this.runner = new ParticleEffectRunner(this.cpuDefinition());
     this.position = copyVec3(options.position ?? [0, 0, 0]);
     this.captureDebugTransforms = options.captureDebugTransforms !== false;
     this.seed = normalizeSeed(options.seed);
@@ -174,6 +196,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       scale: options.scale,
     });
     try {
+      this.rebuildGpuEmitters();
       if (options.autoStart !== false) this.play();
     } catch (error) {
       this.destroy();
@@ -182,16 +205,23 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   }
 
   get isActive(): boolean {
-    return this.runner.isActive;
+    return (
+      this.runner.isActive ||
+      [...this.gpuEmitters.values()].some((e) => e.active)
+    );
   }
 
   play(): void {
     if (this.destroyed) return;
     this.paused = false;
+    if (!this.gpuEmitters.size) this.rebuildGpuEmitters();
     if (!this.runner.isActive) {
+      if (![...this.gpuEmitters.values()].some((e) => e.active))
+        for (const e of this.gpuEmitters.values())
+          e.reset(this.seed, this.timeSeconds);
       this.lightCandidates.startedAt = this.timeSeconds;
       this.runner.reset(
-        this.effect,
+        this.cpuDefinition(),
         this.position,
         this.timeSeconds,
         this.seed,
@@ -199,6 +229,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     } else {
       this.runner.resumeEmission();
     }
+    for (const e of this.gpuEmitters.values()) e.resumeEmission();
     this.draw(this.timeSeconds);
   }
 
@@ -210,12 +241,15 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     this.lightCandidates.clear();
     this.lightRevision++;
     this.runner.stop();
+    for (const e of this.gpuEmitters.values()) e.dispose();
+    this.gpuEmitters.clear();
     this.clearViews();
     this.syncStats(0, 0, 0, 0, 0);
   }
 
   allowCompletion(): void {
     this.runner.allowCompletion();
+    for (const e of this.gpuEmitters.values()) e.allowCompletion();
   }
 
   /**
@@ -227,6 +261,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     emitterId: string,
     sampler: ParticleMotionSampler | null,
   ): boolean {
+    if (this.gpuEmitters.has(emitterId)) return false;
     const index = this.effect.emitters.findIndex(
       (emitter) => emitter.id === emitterId,
     );
@@ -237,6 +272,8 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   }
 
   setRuntimeParameters(parameters: ParticleEffectRuntimeParameterPatch): void {
+    for (const e of this.gpuEmitters.values())
+      e.setRuntimeParameters(parameters);
     this.runner.setRuntimeParameters(parameters);
   }
 
@@ -254,6 +291,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
 
   seek(timeSeconds: number): void {
     if (this.destroyed) return;
+    if (!this.gpuEmitters.size) this.rebuildGpuEmitters();
     this.lightRevision++;
     this.lightCandidates.startedAt = 0;
     const target = Math.max(0, Number.isFinite(timeSeconds) ? timeSeconds : 0);
@@ -261,12 +299,16 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     // new run or survive a backwards seek.
     for (const view of this.emitterViews) if (view) clearThreeTrailView(view);
     this.timeSeconds = 0;
-    this.runner.reset(this.effect, this.position, 0, this.seed);
+    this.runner.reset(this.cpuDefinition(), this.position, 0, this.seed);
+    for (const e of this.gpuEmitters.values()) e.reset(this.seed);
+    this.root.updateWorldMatrix(true, false);
     let cursor = 0;
     while (cursor < target) {
       const dt = Math.min(FIXED_SEEK_STEP_SECONDS, target - cursor);
       cursor += dt;
       this.runner.update(dt, cursor);
+      for (const e of this.gpuEmitters.values())
+        e.update(dt, cursor, this.root.matrixWorld);
     }
     this.timeSeconds = target;
     this.draw(target);
@@ -279,6 +321,9 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     this.syncEmissionGeometries();
     if (dt > 0) {
       this.runner.update(dt, this.timeSeconds);
+      this.root.updateWorldMatrix(true, false);
+      for (const e of this.gpuEmitters.values())
+        e.update(dt, this.timeSeconds, this.root.matrixWorld);
     }
     this.draw(this.timeSeconds);
   }
@@ -295,6 +340,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     parameters: ThreeVfxEmitterRuntimeParameterPatch,
   ): void {
     if (this.destroyed) return;
+    this.gpuEmitters.get(emitterId)?.setRuntimeParameters(parameters, true);
     const {
       sizeMultiplier,
       colorTint,
@@ -362,6 +408,10 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
    */
   emitBurst(emitterId: string, options: ParticleBurstEmitOptions = {}): number {
     if (this.destroyed) return 0;
+    if (this.gpuEmitters.has(emitterId))
+      throw new Error(
+        "GPU emitBurst is unsupported; use authored burst schedules.",
+      );
     this.paused = false;
     if (!this.runner.isActive) this.play();
     this.syncEmissionGeometries();
@@ -505,7 +555,9 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
   ): ParticleEffectDefinition {
     this.effect = normalizeThreeVfxEffect(effect);
     this.lightRevision++;
-    this.runner.updateDefinition(this.effect);
+    this.runner.updateDefinition(this.cpuDefinition());
+    this.rebuildGpuEmitters();
+    if (this.hasGpuSimulation) this.seek(0);
     // Re-resolve emission sources: the edited definition may have switched an
     // emitter's spawn shape or its emission mesh asset.
     this.emissionBoundSources.clear();
@@ -530,6 +582,52 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     this.rebuildViews();
     this.root.removeFromParent();
     this.options.softParticles?.include(this.root);
+  }
+
+  private cpuDefinition(): ParticleEffectDefinition {
+    this.simulationMessages = [];
+    return {
+      ...this.effect,
+      emitters: this.effect.emitters.map((e) => {
+        const resolved = resolveParticleSimulation(
+          e,
+          this.options.renderAdapter?.computeCapabilities,
+        );
+        this.simulationMessages.push(
+          ...resolved.messages.map((m) => `${e.name}: ${m}`),
+        );
+        if (e.simulation?.target !== "gpu") return e;
+        return {
+          ...e,
+          simulation: undefined,
+          maxParticles: resolved.target === "cpu" ? resolved.capacity : 1,
+          enabled: e.enabled && resolved.target === "cpu",
+        };
+      }),
+    };
+  }
+  private rebuildGpuEmitters(): void {
+    for (const e of this.gpuEmitters.values()) e.dispose();
+    this.gpuEmitters.clear();
+    for (const e of this.effect.emitters) {
+      if (
+        !e.enabled ||
+        resolveParticleSimulation(
+          e,
+          this.options.renderAdapter?.computeCapabilities,
+        ).target !== "gpu"
+      )
+        continue;
+      const gpu = this.options.renderAdapter?.createGpuEmitter?.(e, {
+        ...this.options,
+        seed: this.seed,
+        timeSeconds: this.timeSeconds,
+      });
+      if (!gpu)
+        throw new Error("Native GPU simulation adapter is unavailable.");
+      this.gpuEmitters.set(e.id, gpu);
+      this.root.add(gpu.root);
+    }
   }
 
   private draw(timeSeconds: number): void {
@@ -593,7 +691,7 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
 
   private ensureViews(): void {
     for (let i = 0; i < this.effect.emitters.length; i++) {
-      const emitter = this.effect.emitters[i]!;
+      const emitter = this.runner.definition.emitters[i]!;
       const context: ThreeViewBuildContext = {
         effect: this.effect,
         renderGeometryOverride:
@@ -631,13 +729,22 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
     instancedDrawCalls: number,
     legacyParticleDrawCalls: number,
   ): void {
-    this.stats.activeParticles = this.runner.stats.activeParticles;
-    this.stats.visibleParticles = visibleParticles;
-    this.stats.capacity = this.runner.stats.capacity;
+    const gpuCount = [...this.gpuEmitters.values()].reduce(
+      (sum, e) => sum + e.estimatedCount,
+      0,
+    );
+    this.stats.activeParticles = this.runner.stats.activeParticles + gpuCount;
+    this.stats.visibleParticles = visibleParticles + gpuCount;
+    this.stats.capacity =
+      this.runner.stats.capacity +
+      [...this.gpuEmitters.values()].reduce(
+        (sum, e) => sum + e.capacity - 1,
+        0,
+      );
     this.stats.emittedLastFrame = this.runner.stats.emittedLastFrame;
-    this.stats.bloomSourceParticles = bloomSourceParticles;
-    this.stats.drawCalls = drawCalls;
-    this.stats.instancedDrawCalls = instancedDrawCalls;
+    this.stats.bloomSourceParticles = bloomSourceParticles + gpuCount;
+    this.stats.drawCalls = drawCalls + this.gpuEmitters.size;
+    this.stats.instancedDrawCalls = instancedDrawCalls + this.gpuEmitters.size;
     this.stats.legacyParticleDrawCalls = legacyParticleDrawCalls;
     this.stats.missingMeshRefs = this.collectMissingMeshRefs();
     this.stats.missingMaterialRefs = this.collectMissingMaterialRefs();
@@ -645,6 +752,12 @@ export class ThreeVfxEffectInstance implements VfxEffectInstance {
       (view) => view.unsupportedFeatures,
     );
     this.stats.unsupportedFeatures = [
+      ...this.simulationMessages,
+      ...(this.hasGpuSimulation
+        ? [
+            "GPU counts are occupied-slot upper bounds, not live particle readback.",
+          ]
+        : []),
       ...collectThreeBackendSupport(this.effect).blockers.map(
         (blocker) => `${blocker.path}: ${blocker.message}`,
       ),

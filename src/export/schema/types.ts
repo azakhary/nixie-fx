@@ -27,8 +27,8 @@ export type VfxExportedMaterialInstance = MaterialInstance;
 export type VfxExportedMaterialParamValue = MaterialParamValue;
 export type VfxExportedMaterialTextureRef = MaterialTextureRef;
 
-export const VFX_EXPORT_FORMAT_VERSION = 1;
-export type VfxExportFormatVersion = typeof VFX_EXPORT_FORMAT_VERSION;
+export const VFX_EXPORT_FORMAT_VERSION = 2;
+export type VfxExportFormatVersion = 1 | typeof VFX_EXPORT_FORMAT_VERSION;
 
 export type StripParticleScalarEditorFields<T> = T extends ParticleScalarValue
   ? Omit<T, "editorMin" | "editorMax">

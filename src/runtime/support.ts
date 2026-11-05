@@ -1,3 +1,4 @@
+import { gpuSimulationIssues } from "../engine/particleSimulation";
 import type { ParticleEffectDefinition } from "../engine/particles";
 import {
   PIXI_2D_BACKEND_CAPABILITIES,
@@ -32,6 +33,17 @@ export function collectPixiBackendSupport(
   );
   const blockers: VfxSupportDiagnostic[] = validationBlockers(validation);
 
+  effect.emitters.forEach((e, i) => {
+    if (e.simulation?.target === "gpu")
+      (e.simulation.fallback.mode === "cpu" ? warnings : blockers).push({
+        code: "simulation.gpu",
+        path: `emitters.${i}.simulation`,
+        message:
+          e.simulation.fallback.mode === "cpu"
+            ? `Authored CPU fallback (${e.simulation.fallback.maxParticles} maximum particles); GPU fidelity differs.`
+            : "GPU simulation requires native Three WebGPU compute; Pixi is unsupported.",
+      });
+  });
   for (const feature of collectPixiVfxUnsupportedFeatures(effect)) {
     const diagnostic = {
       code: feature.featureKey,
@@ -65,6 +77,22 @@ export function collectThreeBackendSupport(
 
   effect.emitters.forEach((emitter, emitterIndex) => {
     const emitterPath = `emitters.${emitterIndex}`;
+    if (emitter.simulation?.target === "gpu") {
+      for (const message of gpuSimulationIssues(emitter))
+        (emitter.simulation.fallback.mode === "cpu" ? warnings : blockers).push(
+          {
+            code: "simulation.gpu",
+            path: `${emitterPath}.simulation`,
+            message,
+          },
+        );
+      warnings.push({
+        code: "simulation.requirements",
+        path: `${emitterPath}.simulation`,
+        message:
+          "Requires native WebGPU compute and device capacity; GPU visual profile is not bit-exact across devices. Fixed bounds, unsorted rendering, no particle picking/readback.",
+      });
+    }
     if (emitter.mode === "mesh" && emitter.mesh.renderMode === "pixiShard") {
       warnings.push({
         code: "mode.mesh.pixiShard",

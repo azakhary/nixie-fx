@@ -1,3 +1,4 @@
+import { gpuSimulationIssues } from "../../engine/particleSimulation";
 import {
   PARTICLE_HDR_COLOR_INTENSITY_VALUE_LIMIT,
   normalizeParticleEffect,
@@ -297,7 +298,11 @@ function validateRawEffectEnvelope(
       `Effect kind must be "${EFFECT_KIND}".`,
     );
   }
-  if ("version" in source && source.version !== EFFECT_VERSION) {
+  if (
+    "version" in source &&
+    source.version !== EFFECT_VERSION &&
+    source.version !== 2
+  ) {
     addIssue(
       collector,
       "error",
@@ -357,6 +362,39 @@ function validateEmitters(
     const rawEmitter = rawEmitters[emitterIndex];
     const rawEmitterRecord = isRecord(rawEmitter) ? rawEmitter : {};
     const path = `emitters.${emitterIndex}`;
+    for (const message of gpuSimulationIssues(emitter)) {
+      if (emitter.simulation?.fallback.mode !== "cpu")
+        addIssueAndBlocker(
+          collector,
+          "unsupported-module",
+          `${path}.simulation`,
+          message,
+        );
+    }
+    const rawSimulation = rawEmitterRecord.simulation;
+    if (isRecord(rawSimulation)) {
+      if (
+        rawSimulation.version !== 1 ||
+        !["cpu", "gpu"].includes(String(rawSimulation.target)) ||
+        rawSimulation.profile !== "independent-v1"
+      )
+        addIssueAndBlocker(
+          collector,
+          "bad-version",
+          `${path}.simulation`,
+          "Unknown simulation version, target or profile.",
+        );
+      if (
+        JSON.stringify(rawSimulation.bounds) !==
+        JSON.stringify(emitter.simulation?.bounds)
+      )
+        addIssueAndBlocker(
+          collector,
+          "clamped-value",
+          `${path}.simulation.bounds`,
+          "GPU bounds must contain finite three-component min/max vectors with min < max.",
+        );
+    }
     validateTextureRef(
       rawEmitterRecord,
       emitter,
@@ -1089,8 +1127,28 @@ function validateRawNumbers(
   value: unknown,
   path: string,
   collector: ValidationCollector,
+  gpu = false,
 ): void {
   if (typeof value === "number") {
+    if (
+      gpu &&
+      (path.endsWith(".maxParticles") ||
+        path.endsWith(".spawn.rate") ||
+        /\.spawn\.bursts\.\d+\.count$/.test(path) ||
+        /\.spawn\.rateValue\.(value|min|max)$/.test(path))
+    ) {
+      if (
+        !Number.isFinite(value) ||
+        value < (path.endsWith(".maxParticles") ? 1 : 0) ||
+        value > 262144
+      )
+        addNumericIssue(
+          collector,
+          path,
+          "GPU capacity/rate must be finite and at most 262144.",
+        );
+      return;
+    }
     validateNumber(value, path, collector);
     return;
   }
@@ -1100,13 +1158,15 @@ function validateRawNumbers(
         item,
         path ? `${path}.${index}` : `${index}`,
         collector,
+        gpu,
       );
     });
     return;
   }
   if (!isRecord(value)) return;
+  gpu ||= isRecord(value.simulation) && value.simulation.target === "gpu";
   for (const [key, item] of Object.entries(value)) {
-    validateRawNumbers(item, path ? `${path}.${key}` : key, collector);
+    validateRawNumbers(item, path ? `${path}.${key}` : key, collector, gpu);
   }
 }
 

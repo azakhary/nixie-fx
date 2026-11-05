@@ -1,3 +1,7 @@
+import type {
+  ThreeGpuLightSource,
+  ThreeGpuLightAllocation,
+} from "./gpu/lights";
 import {
   PointLight,
   Scene,
@@ -31,11 +35,14 @@ export interface ThreeVfxClusterBackend {
     maxOccupancy: number;
     culledLights: number;
     contributingLights: number;
+    gpuReservedLights?: number;
+    gpuRejectedLights?: number;
   };
   update(
     slots: readonly VfxLightSlot[],
     camera: Camera,
     perCluster: number,
+    gpu?: readonly ThreeGpuLightAllocation[],
   ): boolean;
   clear(): void;
 }
@@ -150,7 +157,9 @@ export class ThreeVfxLightManager {
     }
   }
   private readonly producers = new Map<
-    VfxLightProducer,
+    VfxLightProducer & {
+      getGpuLightSources?: () => readonly ThreeGpuLightSource[];
+    },
     { revision: number; ids: Set<string> }
   >();
   private readonly selector = new VfxLightSelector();
@@ -312,10 +321,26 @@ export class ThreeVfxLightManager {
         candidates.push(candidate);
       }
     }
+    const sources = [...this.producers.keys()].flatMap(
+      (p) => p.getGpuLightSources?.() ?? [],
+    );
+    const allocations: ThreeGpuLightAllocation[] = [];
+    let reserved = 0;
+    // Preserve CPU importance selection; GPU sources share the remaining host
+    // allowance in registration order. Reservation is bounded, independent of density.
+    const gpuAllowance = clustered
+      ? Math.max(0, allowance - Math.min(candidates.length, allowance))
+      : 0;
+    for (const source of sources) {
+      const count = Math.min(source.requestedLights, gpuAllowance - reserved);
+      if (count > 0) allocations.push({ source, offset: reserved, count });
+      reserved += Math.max(0, count);
+    }
+    this.stats.candidates += sources.reduce((n, s) => n + s.requestedLights, 0);
     this.cameraPosition.setFromMatrixPosition(camera.matrixWorld);
     this.selector.update(
       candidates,
-      allowance,
+      allowance - reserved,
       discontinuity || (this.profileChanged && dt === 0)
         ? this.selector.fadeSeconds
         : dt,
@@ -323,7 +348,12 @@ export class ThreeVfxLightManager {
       frozen,
     );
     this.profileChanged = false;
-    this.stats.budgetRejected = Math.max(0, candidates.length - allowance);
+    this.stats.budgetRejected = Math.max(
+      0,
+      candidates.length +
+        sources.reduce((n, source) => n + source.requestedLights, 0) -
+        allowance,
+    );
     this.stats.fading = this.selector.slots.filter(
       (slot) => slot.retiring || slot.gain < 1,
     ).length;
@@ -338,12 +368,18 @@ export class ThreeVfxLightManager {
         this.selector.slots,
         camera,
         this.stats.perClusterCapacity,
+        allocations,
       );
       Object.assign(this.stats, this.cluster.stats);
+      this.stats.active += this.cluster.stats.gpuReservedLights ?? reserved;
+      this.stats.budgetRejected += this.cluster.stats.gpuRejectedLights ?? 0;
       this.stats.reason = valid
         ? ""
         : "Clustered lighting needs a finite perspective or orthographic camera. Select the small path.";
     }
+    if (sources.length && !clustered)
+      this.stats.reason =
+        "GPU particle lights require the clustered WebGPU profile; no CPU readback fallback.";
   }
 
   private apply(): void {

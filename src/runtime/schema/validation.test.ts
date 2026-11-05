@@ -44,7 +44,7 @@ describe("vfx authoring validation", () => {
     const result = validateVfxAuthoringEffect({
       app: "other-editor",
       kind: "wrong-kind",
-      version: 2,
+      version: 999,
       id: "bad-effect",
       emitters: [
         {

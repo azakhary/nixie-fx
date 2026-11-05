@@ -74,7 +74,7 @@ export function compileVfxEffect(
   const sourceHash = createVfxSourceHash(value);
   const effect: VfxExportedEffect = {
     kind: "vfx-effect",
-    version: VFX_EXPORT_FORMAT_VERSION,
+    version: normalized.version === 2 ? VFX_EXPORT_FORMAT_VERSION : 1,
     generatedAt,
     id: normalized.id,
     name: normalized.name,
@@ -152,7 +152,9 @@ export function compileVfxManifest(
     mergeVfxValidationResults(effects.map((compiled) => compiled.validation));
   return {
     kind: "vfx-manifest",
-    version: VFX_EXPORT_FORMAT_VERSION,
+    version: effects.some((e) => e.effect.version === 2)
+      ? VFX_EXPORT_FORMAT_VERSION
+      : 1,
     generatedAt: options.generatedAt ?? new Date().toISOString(),
     sourceHash: createVfxSourceHash(
       effects.map((compiled) => ({

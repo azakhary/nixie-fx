@@ -1,3 +1,5 @@
+import { ThreeGpuLightClusters } from "../gpu/cluster";
+import type { ThreeGpuLightAllocation } from "../gpu/lights";
 import {
   DataTexture,
   FloatType,
@@ -41,7 +43,7 @@ export function createThreeClusteredLighting(
   const supported =
     "isWebGPUBackend" in renderer.backend &&
     renderer.backend.isWebGPUBackend === true;
-  const backend = new ClusterBackend(supported);
+  const backend = new ClusterBackend(supported, renderer);
   const manager = ThreeVfxLightManager.forScene(scene);
   const previous = renderer.lighting;
   const originalGetNode = previous.getNode;
@@ -86,7 +88,10 @@ const bindings = new WeakSet<WebGPURenderer>();
 
 class ClusterBackend implements ThreeVfxClusterBackend {
   readonly grid = new ThreeLightClusterGrid();
-  readonly stats = this.grid.stats;
+  readonly stats = Object.assign(this.grid.stats, {
+    gpuReservedLights: 0,
+    gpuRejectedLights: 0,
+  });
   readonly reason: string;
   readonly lights = new DataTexture(
     this.grid.lightData,
@@ -103,7 +108,12 @@ class ClusterBackend implements ThreeVfxClusterBackend {
     UnsignedIntType,
   );
   readonly enabled = T.uniform(0);
-  constructor(readonly supported: boolean) {
+  readonly gpu?: ThreeGpuLightClusters;
+  constructor(
+    readonly supported: boolean,
+    renderer: WebGPURenderer,
+  ) {
+    if (supported) this.gpu = new ThreeGpuLightClusters(renderer);
     this.reason = supported
       ? ""
       : "Clustered lighting requires native WebGPU; WebGL2 fallback is small-budget only. Use 0, 2 or 4 lights.";
@@ -112,19 +122,32 @@ class ClusterBackend implements ThreeVfxClusterBackend {
     slots: readonly VfxLightSlot[],
     camera: Camera,
     perCluster: number,
+    gpu: readonly ThreeGpuLightAllocation[] = [],
   ): boolean {
     const valid = this.supported && this.grid.update(slots, camera, perCluster);
     this.enabled.value = valid ? 1 : 0;
+    if (valid)
+      this.stats.gpuReservedLights =
+        this.gpu?.update(
+          gpu,
+          camera,
+          Math.max(0, perCluster - this.grid.stats.maxOccupancy),
+        ) ?? 0;
+    else this.gpu?.clear();
     this.lights.needsUpdate = this.indices.needsUpdate = true;
+    this.stats.gpuRejectedLights =
+      gpu.reduce((n, a) => n + a.count, 0) - this.stats.gpuReservedLights;
     return valid;
   }
   clear(): void {
     this.enabled.value = 0;
+    this.gpu?.clear();
     this.grid.clear();
     this.lights.needsUpdate = this.indices.needsUpdate = true;
   }
   dispose(): void {
     this.clear();
+    this.gpu?.dispose();
     this.lights.dispose();
     this.indices.dispose();
   }
@@ -157,6 +180,7 @@ class ClusterBackend implements ThreeVfxClusterBackend {
       const cluster = xy.x.add(
         xy.y.add(z.mul(THREE_CLUSTER_LIMITS.y)).mul(THREE_CLUSTER_LIMITS.x),
       );
+      this.gpu?.visit(cluster, visit);
       T.Loop(THREE_CLUSTER_LIMITS.perCluster, ({ i }) => {
         const packed = T.textureLoad(
           this.indices,

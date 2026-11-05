@@ -373,3 +373,10 @@ PixiJS, and the Node export adapter.
 ## License
 
 [MIT](./LICENSE)
+
+## Native GPU simulation
+
+Three effects can mix deterministic CPU emitters with native WebGPU independent
+particles. See [the GPU simulation contract](docs/gpu-simulation.md) and the
+[minimal exported consumer](examples/gpu/README.md) for support, explicit fallback,
+capacities, lifecycle and shared-light policies.

@@ -14,7 +14,11 @@ describe("initialized renderer lighting binding", () => {
     const lighting = new Lighting(),
       disposeLists = vi.fn();
     const renderer = {
-      backend: { isWebGPUBackend: true },
+      backend: {
+        isWebGPUBackend: true,
+        get: () => ({}),
+        destroyAttribute: vi.fn(),
+      },
       lighting,
       _renderLists: { dispose: disposeLists },
     } as unknown as WebGPURenderer;
@@ -51,7 +55,11 @@ describe("initialized renderer lighting binding", () => {
   it("submits the clustered BRDF function to the shader stack", () => {
     const lighting = new Lighting();
     const renderer = {
-      backend: { isWebGPUBackend: true },
+      backend: {
+        isWebGPUBackend: true,
+        get: () => ({}),
+        destroyAttribute: vi.fn(),
+      },
       lighting,
       _renderLists: { dispose: vi.fn() },
     } as unknown as WebGPURenderer;

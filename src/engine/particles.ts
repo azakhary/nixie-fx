@@ -1,3 +1,9 @@
+import {
+  cpuParticleDefinition,
+  normalizeParticleSimulation,
+  GPU_PARTICLE_CAPACITY,
+  type ParticleSimulationSettings,
+} from "./particleSimulation";
 import { type Vec2, type Vec3, type Vec4 } from "./math";
 import {
   normalizeCurvePoints,
@@ -492,6 +498,7 @@ export interface ParticleEmitterDefinition {
   enabled: boolean;
   mode: ParticleEmitterMode;
   maxParticles: number;
+  simulation?: ParticleSimulationSettings;
   duration: number;
   loop: boolean;
   timeline: ParticleEmitterTimelineDefinition;
@@ -512,7 +519,7 @@ export interface ParticleEmitterDefinition {
 export interface ParticleEffectDefinition {
   app: "vfx-editor";
   kind: "particle-effect";
-  version: 1;
+  version: 1 | 2;
   targetProfile: VfxTargetProfile;
   id: string;
   name: string;
@@ -1115,7 +1122,7 @@ export function normalizeParticleEffect(
   return {
     app: "vfx-editor",
     kind: "particle-effect",
-    version: 1,
+    version: emitters.some((e) => e.simulation) ? 2 : 1,
     targetProfile: normalizeTargetProfile(source.targetProfile),
     id: safeId(source.id, "particle-effect"),
     name: safeString(source.name, "Particle Effect"),
@@ -1282,19 +1289,28 @@ function normalizeEmitter(
 ): ParticleEmitterDefinition {
   const source = isRecord(value) ? value : {};
   const fallback = DEFAULT_EMITTER;
-  const spawn = normalizeSpawn(source.spawn);
+  const simulation = normalizeParticleSimulation(source.simulation);
+  const spawn = normalizeSpawn(source.spawn, simulation?.target === "gpu");
   return {
     id: safeId(source.id, `emitter-${index + 1}`),
     name: safeString(source.name, `Emitter ${index + 1}`),
     enabled: source.enabled !== false,
     mode: source.mode === "mesh" ? "mesh" : "billboard",
-    maxParticles: Math.round(
-      clampNumber(
-        numberOr(source.maxParticles, fallback.maxParticles),
-        1,
-        4096,
-      ),
-    ),
+    ...(simulation ? { simulation } : {}),
+    // Preserve invalid GPU requests so resolution can block with an explanation;
+    // silently clamping here would erase the authored quality requirement.
+    maxParticles:
+      simulation?.target === "gpu"
+        ? typeof source.maxParticles === "number"
+          ? source.maxParticles
+          : fallback.maxParticles
+        : Math.round(
+            clampNumber(
+              numberOr(source.maxParticles, fallback.maxParticles),
+              1,
+              4096,
+            ),
+          ),
     duration: clampNumber(
       numberOr(source.duration, fallback.duration),
       0.05,
@@ -1324,12 +1340,12 @@ function normalizeEmitter(
   };
 }
 
-function normalizeSpawn(value: unknown): ParticleSpawnSettings {
+function normalizeSpawn(value: unknown, gpu = false): ParticleSpawnSettings {
   const source = isRecord(value) ? value : {};
   const rate = clampNumber(
     numberOr(source.rate, DEFAULT_EMITTER.spawn.rate),
     0,
-    3000,
+    gpu ? GPU_PARTICLE_CAPACITY : 3000,
   );
   const rateOverDistance = clampNumber(
     numberOr(source.rateOverDistance, DEFAULT_EMITTER.spawn.rateOverDistance),
@@ -1354,7 +1370,12 @@ function normalizeSpawn(value: unknown): ParticleSpawnSettings {
         : DEFAULT_EMITTER.spawn.shape;
   return {
     rate,
-    rateValue: normalizeParticleScalarValue(source.rateValue, rate, 0, 3000),
+    rateValue: normalizeParticleScalarValue(
+      source.rateValue,
+      rate,
+      0,
+      gpu ? GPU_PARTICLE_CAPACITY : 3000,
+    ),
     rateOverDistance,
     rateOverDistanceValue: normalizeParticleScalarValue(
       source.rateOverDistanceValue,
@@ -1362,7 +1383,7 @@ function normalizeSpawn(value: unknown): ParticleSpawnSettings {
       0,
       1000,
     ),
-    bursts: normalizeBurstSchedules(source, DEFAULT_EMITTER.spawn.bursts),
+    bursts: normalizeBurstSchedules(source, DEFAULT_EMITTER.spawn.bursts, gpu),
     shape,
     radius,
     radiusValue: normalizeParticleScalarValue(
@@ -1448,6 +1469,7 @@ function normalizeSpawn(value: unknown): ParticleSpawnSettings {
 function normalizeBurstSchedules(
   source: Record<string, unknown>,
   fallback: readonly ParticleBurstSchedule[] = [],
+  gpu = false,
 ): ParticleBurstSchedule[] {
   const raw = Array.isArray(source.bursts)
     ? source.bursts
@@ -1459,7 +1481,13 @@ function normalizeBurstSchedules(
   return raw
     .map((item): ParticleBurstSchedule | undefined => {
       if (!isRecord(item)) return undefined;
-      const count = Math.round(clampNumber(numberOr(item.count, 0), 0, 4096));
+      const count = Math.round(
+        clampNumber(
+          numberOr(item.count, 0),
+          0,
+          gpu ? GPU_PARTICLE_CAPACITY : 4096,
+        ),
+      );
       const cycles = Math.round(
         clampNumber(
           numberOr(item.cycles, numberOr(item.cycleCount, 1)),
@@ -3016,7 +3044,7 @@ export class ParticleEffectRunner {
       ),
     );
     this.effectDefinition = new ParticleEffectRuntimeDefinition(
-      effect,
+      cpuParticleDefinition(effect),
       cloneParticleEffect,
     );
     this.states = this.effect.emitters.map(
@@ -3047,7 +3075,7 @@ export class ParticleEffectRunner {
     timeSeconds: number,
     seed = 0x7f4a7c15,
   ): void {
-    this.effectDefinition.replace(effect);
+    this.effectDefinition.replace(cpuParticleDefinition(effect));
     this.position[0] = position[0];
     this.position[1] = position[1];
     this.position[2] = position[2];
@@ -3069,7 +3097,7 @@ export class ParticleEffectRunner {
   }
 
   updateDefinition(effect: ParticleEffectDefinition): void {
-    this.effectDefinition.replace(effect);
+    this.effectDefinition.replace(cpuParticleDefinition(effect));
     this.resizeStates();
     this.refreshCapacity();
   }

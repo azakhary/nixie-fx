@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <title>NixieFX GPU integration check</title>
+    <style>
+      body {
+        margin: 0;
+        background: #15171b;
+        color: #eee;
+        font: 13px monospace;
+      }
+      canvas {
+        display: block;
+      }
+      aside {
+        position: absolute;
+        left: 15px;
+        top: 10px;
+        max-width: 55vw;
+      }
+      pre {
+        white-space: pre-wrap;
+        pointer-events: none;
+      }
+      button,
+      select {
+        font: inherit;
+        padding: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <select id="effect" aria-label="Exported effect"></select
+      ><button id="pause">Pause / resume</button
+      ><button id="restart">Restart</button><button id="seek">Seek 10s</button>
+      <pre id="status">Loading exported effects…</pre>
+    </aside>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

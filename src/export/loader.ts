@@ -284,7 +284,7 @@ function assertUnique(
 }
 
 function assertFormatVersion(value: unknown, label: string): void {
-  if (value !== VFX_EXPORT_FORMAT_VERSION) {
+  if (value !== 1 && value !== VFX_EXPORT_FORMAT_VERSION) {
     throw new Error(
       `${label} version must be ${VFX_EXPORT_FORMAT_VERSION}; received ${String(
         value,

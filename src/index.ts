@@ -36,3 +36,5 @@ export * from "./runtime/support";
 
 export * from "./runtime/lights/candidates";
 export * from "./runtime/lights/selection";
+
+export * from "./engine/particleSimulation";

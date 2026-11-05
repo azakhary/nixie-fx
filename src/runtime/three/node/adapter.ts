@@ -1,3 +1,8 @@
+import {
+  ThreeGpuParticleEmitter,
+  threeComputeCapabilities,
+} from "../gpu/emitter";
+import type { WebGPURenderer } from "three/webgpu";
 import { threeNodeSoftParticleFade } from "./softParticles";
 import { sampleNodeTexture } from "./textureSample";
 import { BackSide, DoubleSide, FrontSide, type Texture } from "three";
@@ -37,8 +42,15 @@ import { createSceneGraphInputs } from "./sceneInputs";
 import { ThreeNodeInstances } from "./instances";
 
 /** Pair with WebGPURenderer (native WebGPU or its WebGL2 fallback), never WebGLRenderer. */
-export function createThreeNodeAdapter(): ThreeVfxRenderAdapter {
+export function createThreeNodeAdapter(
+  renderer?: WebGPURenderer,
+): ThreeVfxRenderAdapter {
   return {
+    computeCapabilities: threeComputeCapabilities(renderer),
+    createGpuEmitter: renderer
+      ? (emitter, options) =>
+          new ThreeGpuParticleEmitter(renderer, emitter, options)
+      : undefined,
     createMaterial: (emitter, options, trail) => {
       try {
         return createNodeMaterial(emitter, options, trail);
@@ -52,10 +64,11 @@ export function createThreeNodeAdapter(): ThreeVfxRenderAdapter {
       new ThreeNodeInstances(geometry, resolution, emitter),
   };
 }
-function createNodeMaterial(
+export function createNodeMaterial(
   original: ParticleEmitterDefinition,
   options: ThreeVfxEffectInstanceOptions,
   trail: boolean,
+  gpuColor?: Node4,
 ): ThreeEmitterMaterialResolution {
   const trails = original.advanced.trails;
   const emitter = trail
@@ -139,14 +152,18 @@ function createNodeMaterial(
     material.vertexColors = false;
     if (artifact?.usesSceneLighting) material.lights = true;
     const time = T.uniform(0);
-    const particle = T.attribute<"vec4">(trail ? "color" : "nfxColor", "vec4");
-    const dynamic = T.attribute<"vec4">(
-      trail ? "trailDynamicParams" : "nfxDynamic",
-      "vec4",
-    );
-    const subUv = trail
-      ? T.vec4(0, 0, 1, 1)
-      : T.attribute<"vec4">("nfxSubUv", "vec4");
+    const particle =
+      gpuColor ?? T.attribute<"vec4">(trail ? "color" : "nfxColor", "vec4");
+    const dynamic = gpuColor
+      ? T.vec4(0)
+      : T.attribute<"vec4">(
+          trail ? "trailDynamicParams" : "nfxDynamic",
+          "vec4",
+        );
+    const subUv =
+      trail || gpuColor
+        ? T.vec4(0, 0, 1, 1)
+        : T.attribute<"vec4">("nfxSubUv", "vec4");
     const path = instance
       ? resolveEffectiveMainTexPath(graph, instance) || emitter.render.texture
       : emitter.render.texture;
@@ -237,7 +254,12 @@ function createNodeMaterial(
       if (material instanceof MeshStandardNodeMaterial && !trail) {
         emissive = T.vec4(
           nodeLinearColor(particle).rgb.mul(
-            T.attribute<"float">("nfxEmissive", "float").sub(1).max(0),
+            (gpuColor
+              ? T.float(1)
+              : T.attribute<"float">("nfxEmissive", "float")
+            )
+              .sub(1)
+              .max(0),
           ),
           0,
         );
