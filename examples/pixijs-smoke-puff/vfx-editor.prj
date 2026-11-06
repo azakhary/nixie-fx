@@ -1,0 +1,17 @@
+{
+  "app": "vfx-editor",
+  "kind": "project",
+  "version": 1,
+  "id": "pixijs-smoke-puff-example",
+  "name": "PixiJS Smoke Puff",
+  "settings": {
+    "effectDataPath": "effects",
+    "outputPath": "out/vfx",
+    "assetRootPath": "assets",
+    "materialsFolder": "materials",
+    "allowExternalOutput": false,
+    "lastEffectFile": "smoke-puff.json"
+  },
+  "createdAt": "2026-10-02T00:00:00.000Z",
+  "updatedAt": "2026-10-02T00:00:00.000Z"
+}
