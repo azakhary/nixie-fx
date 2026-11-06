@@ -1,0 +1,55 @@
+{
+  "kind": "vfx-manifest",
+  "version": 1,
+  "generatedAt": "2026-10-02T12:21:14.450Z",
+  "sourceHash": "fnv1a32:bbb6ec7c",
+  "effects": [
+    {
+      "id": "card-reveal-glow",
+      "name": "Card Reveal Glow",
+      "path": "effects/card-reveal-glow.json",
+      "sourceEffectFile": "card-reveal-glow.json",
+      "sourceEffectId": "card-reveal-glow",
+      "sourceHash": "fnv1a32:7367de3d",
+      "support": {
+        "status": "supported",
+        "overall": "supported",
+        "targetProfile": "pixi-ui-2d",
+        "preferredBackend": "pixi2d",
+        "portableSubset": true,
+        "backends": {
+          "pixi2d": {
+            "backend": "pixi2d",
+            "status": "supported",
+            "warnings": [],
+            "blockers": []
+          },
+          "three3d": {
+            "backend": "three3d",
+            "status": "supported",
+            "warnings": [],
+            "blockers": []
+          }
+        },
+        "unsupportedModules": [],
+        "partialModules": [],
+        "warnings": []
+      },
+      "validation": {
+        "valid": true,
+        "errors": [],
+        "warnings": [],
+        "infos": [],
+        "blockers": []
+      }
+    }
+  ],
+  "assets": [],
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "infos": [],
+    "blockers": []
+  }
+}
